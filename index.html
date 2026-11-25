@@ -45,15 +45,23 @@
 
   <main class="workspace">
     <section class="notebook" aria-label="词条列表">
+      <div class="bookbar">
+        <label class="book-select">
+          <select id="book-select" aria-label="当前词本"></select>
+          <svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>
+        </label>
+        <span id="list-context" class="list-context"></span>
+        <nav id="pagination" class="pagination" aria-label="词条分页" hidden>
+          <button type="button" class="text-button" id="prev-page">上一页</button>
+          <button type="button" class="text-button" id="next-page">下一页</button>
+        </nav>
+      </div>
       <div id="sync-problem" class="inline-alert" hidden></div>
       <div id="word-list" class="word-list" aria-live="off">
-        <div id="list-header" class="list-header word-grid">
-          <span class="english-col">英文</span><span class="meaning-col">中文释义</span>
-          <span id="list-context"></span>
-        </div>
         <ul id="rows"></ul>
         <div id="empty" class="empty" hidden>
           <p id="empty-text"></p>
+          <button type="button" class="secondary" id="retry-book" hidden>重试载入</button>
         </div>
       </div>
     </section>
@@ -69,6 +77,7 @@
     </div>
     <div class="settings-tabs" aria-label="设置分类">
       <button type="button" id="display-tab" aria-pressed="true" aria-controls="display-panel">显示</button>
+      <button type="button" id="books-tab" aria-pressed="false" aria-controls="books-panel">词本</button>
       <button type="button" id="cloud-tab" aria-pressed="false" aria-controls="cloud-panel">Firebase</button>
     </div>
     <div class="drawer-content">
@@ -93,6 +102,26 @@
           </label>
         </fieldset>
       </section>
+      <section id="books-panel" hidden>
+        <fieldset class="setting-group">
+          <legend>显示在单词列表</legend>
+          <div id="book-visibility"></div>
+        </fieldset>
+        <form id="create-book-form">
+          <label for="new-book-name">新建词本</label>
+          <div class="create-book-row">
+            <input id="new-book-name" maxlength="36" required autocomplete="off" placeholder="词本名称">
+            <button class="primary" id="create-book" type="submit">新建</button>
+          </div>
+        </form>
+        <p id="books-message" class="feedback" role="status" hidden></p>
+        <p id="books-sync-message" class="settings-note" role="status" hidden></p>
+        <details class="help">
+          <summary>考试词本来源</summary>
+          <p>内置词本收录 ECDICT 的全部对应考试标签。四、六级还补入了官方大纲附表中可与 ECDICT 释义匹配的词，按英文拼写去重。</p>
+          <p><a href="https://github.com/skywind3000/ECDICT" target="_blank" rel="noopener noreferrer">ECDICT</a> · <a href="./wordpacks/LICENSE-ECDICT.txt" target="_blank" rel="noopener">MIT 许可</a></p>
+        </details>
+      </section>
       <section id="cloud-panel" hidden>
         <div id="account" class="account" hidden>
           <span class="brand-mark account-mark"><svg><use href="#icon-cloud"/></svg></span>
@@ -110,17 +139,19 @@
         </form>
         <p id="cloud-message" class="feedback" role="status" hidden></p>
         <button id="merge-local" class="secondary" type="button" hidden>合并本机词条到云端</button>
+        <button id="merge-local-books" class="secondary" type="button" hidden>合并本机自建词本</button>
         <details class="help">
           <summary>Firebase 配置步骤</summary>
           <ol>
             <li>在你自己的 Firebase 项目里添加网页应用，复制项目设置中的 <code>firebaseConfig</code>。</li>
             <li>在 Authentication 启用电子邮件和密码登录，并在用户页添加自己的账号。</li>
-            <li>启用默认 Cloud Firestore，发布 <a href="./firestore.rules" download>单词本安全规则</a>。已配置 Mizu 桌面版的同名规则可以继续用。</li>
+            <li>启用默认 Cloud Firestore，发布 <a href="./firestore.rules" download>单词本安全规则</a>。已有其他应用的规则时，保留原有路径并合并 Mizu 的两条路径。</li>
           </ol>
-          <p>使用桌面版同一项目和账号时，两端共用云端备份。网页修改会写到云端，桌面版需要手动恢复才能读取。</p>
+          <p>使用同一项目和账号时，桌面版可从云端恢复「我的单词本」。自建词本在网页之间同步。</p>
         </details>
       </section>
     </div>
+    <footer class="settings-credit">design by <a href="https://github.com/cqc0101" target="_blank" rel="noopener noreferrer">小程</a></footer>
   </dialog>
 
   <dialog id="editor" class="modal" aria-labelledby="editor-title">
@@ -166,6 +197,13 @@
       <button type="button" data-mode="self" aria-pressed="true">自测</button>
       <button type="button" data-mode="choice" aria-pressed="false">四选一</button>
     </div>
+    <details class="practice-books" id="practice-books">
+      <summary id="practice-books-summary">练习词本</summary>
+      <label class="practice-select-all"><input id="practice-select-all" type="checkbox">全选</label>
+      <fieldset id="practice-book-options" aria-label="选择练习词本"></fieldset>
+      <button type="button" class="primary" id="practice-apply-books">开始练习</button>
+    </details>
+    <p id="practice-load" class="practice-empty" role="status" hidden></p>
     <p id="practice-empty" class="practice-empty" role="status" hidden></p>
     <section id="practice-question" hidden>
       <div class="practice-progress">

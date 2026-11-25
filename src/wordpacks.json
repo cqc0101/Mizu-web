@@ -1,0 +1,50 @@
+{
+  "source": "https://github.com/skywind3000/ECDICT",
+  "revision": "39cfb9672c0906b63569e0453c2e6abfb9ab182a",
+  "packs": [
+    {
+      "id": "cet4",
+      "name": "四级",
+      "path": "wordpacks/data/cet4-64dcf113c1aa.json",
+      "count": 5319,
+      "translated": 5319,
+      "tagged": 3849,
+      "appendixCount": 4125,
+      "appendixMatched": 4123
+    },
+    {
+      "id": "cet6",
+      "name": "六级",
+      "path": "wordpacks/data/cet6-6d4ed2d757f4.json",
+      "count": 7303,
+      "translated": 7303,
+      "tagged": 5407,
+      "appendixCount": 5403,
+      "appendixMatched": 5398
+    },
+    {
+      "id": "ielts",
+      "name": "雅思",
+      "path": "wordpacks/data/ielts-24ff241f7bb0.json",
+      "count": 5040,
+      "translated": 5040,
+      "tagged": 5040
+    },
+    {
+      "id": "toefl",
+      "name": "托福",
+      "path": "wordpacks/data/toefl-63dd37694e85.json",
+      "count": 6974,
+      "translated": 6974,
+      "tagged": 6974
+    },
+    {
+      "id": "gre",
+      "name": "GRE",
+      "path": "wordpacks/data/gre-fa8ccfdc766b.json",
+      "count": 7504,
+      "translated": 7504,
+      "tagged": 7504
+    }
+  ]
+}

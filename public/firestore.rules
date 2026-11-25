@@ -1,19 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    function validMizuSnapshot() {
+      return request.resource.data.keys().hasOnly(['schemaVersion', 'payload'])
+        && request.resource.data.keys().hasAll(['schemaVersion', 'payload'])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.payload is bytes
+        && request.resource.data.payload.size() <= 1000000;
+    }
     match /mizuSync/{uid} {
-      function owner() {
-        return request.auth != null && request.auth.uid == uid;
-      }
-      function validSnapshot() {
-        return request.resource.data.keys().hasOnly(['schemaVersion', 'payload'])
-          && request.resource.data.keys().hasAll(['schemaVersion', 'payload'])
-          && request.resource.data.schemaVersion == 1
-          && request.resource.data.payload is bytes
-          && request.resource.data.payload.size() <= 1000000;
-      }
-      allow get: if owner();
-      allow create, update: if owner() && validSnapshot();
+      allow get: if owner(uid);
+      allow create, update: if owner(uid) && validMizuSnapshot();
+    }
+    match /mizuWebBooks/{uid} {
+      allow get: if owner(uid);
+      allow create, update: if owner(uid) && validMizuSnapshot();
     }
   }
 }

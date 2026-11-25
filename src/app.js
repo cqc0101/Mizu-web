@@ -1,11 +1,16 @@
 import "./style.css";
 import { changeWords, parseFirebaseConfig, readWords, wordLimit } from "./words.js";
 import { setupPractice } from "./practice-ui.js";
+import { changeBooks, encodeBooks, personalBook, readBooks } from "./books.js";
+import { examBooks, getExamWords, loadExamWords } from "./wordpacks.js";
 
 const byId = (id) => document.getElementById(id);
 const prefKey = "mizu-web:display";
 const localKey = "mizu-web:words";
 const configKey = "mizu-web:firebase";
+const localBooksKey = "mizu-web:custom-books";
+const bookDisplayKey = "mizu-web:book-display";
+const pageSize = 50;
 const themes = { light: "雾白", dark: "墨绿", navy: "深蓝", pink: "浅粉", lavender: "浅紫" };
 const themeColors = { light: "#eaf0e9", dark: "#1b2520", navy: "#142033", pink: "#f4e7ed", lavender: "#ebe6f6" };
 
@@ -35,6 +40,17 @@ function loadLocalWords() {
     return [];
   }
 }
+let localBooksError = "";
+function loadLocalBooks() {
+  try {
+    localBooksError = "";
+    const stored = getSaved(localBooksKey);
+    return stored === null ? [] : readBooks(JSON.parse(stored));
+  } catch {
+    localBooksError = "本机自建词本格式异常，原数据已保留。";
+    return [];
+  }
+}
 const bounded = (value, min, max, fallback) =>
   typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
 const savedDisplay = readJson(prefKey) ?? {};
@@ -58,6 +74,15 @@ const configInput = byId("firebase-config");
 const emailInput = byId("email");
 const passwordInput = byId("password");
 let localWords = loadLocalWords();
+let localBooks = loadLocalBooks();
+const bookDisplay = readJson(bookDisplayKey) ?? {};
+let chosenBookId = typeof bookDisplay.active === "string" ? bookDisplay.active : personalBook.id;
+const hiddenBooks = new Set(Array.isArray(bookDisplay.hidden) ? bookDisplay.hidden.filter((id) => typeof id === "string") : []);
+const bookSelect = byId("book-select");
+const bookVisibility = byId("book-visibility");
+let renderedBooks = "";
+let pageIndex = 0;
+const examRequests = new Map();
 let connection;
 let selectedConfig;
 let cloud = null;
@@ -165,11 +190,76 @@ function describeError(error) {
   }
 }
 
-const currentWords = () => cloud?.words ?? localWords;
+const personalWords = () => cloud?.words ?? localWords;
+const customBooks = () => cloud?.books ?? localBooks;
+const books = () => [personalBook, ...examBooks, ...customBooks().map(({ id, name }) => ({ id, name, kind: "custom" }))];
+const visibleBooks = () => books().filter(({ id }) => !hiddenBooks.has(id));
+const activeBook = () => {
+  const visible = visibleBooks();
+  return visible.find(({ id }) => id === chosenBookId) ?? visible[0];
+};
+const bookWords = (book) => {
+  if (!book) return [];
+  if (book.kind === "exam") return getExamWords(book.id);
+  if (book.kind === "personal") return personalWords();
+  return customBooks().find(({ id }) => id === book.id)?.words ?? [];
+};
 const library = () => cloud ? cloud.project + "/" + cloud.uid : "local";
-const canWrite = () => !connecting && !working && (cloud ? cloud.ready : !localLoadError);
+const canWriteCustom = () => !connecting && !working && (cloud ? cloud.booksReady : !localBooksError);
+const canWrite = (book = activeBook()) => book?.kind === "custom" ? canWriteCustom()
+  : book?.kind === "personal" && !connecting && !working && (cloud ? cloud.ready : !localLoadError);
 
-function wordRow(entry) {
+function saveBookDisplay() {
+  remember(bookDisplayKey, { active: chosenBookId, hidden: [...hiddenBooks] });
+}
+
+function loadSelectedExam(book) {
+  if (book?.kind !== "exam" || getExamWords(book.id) || examRequests.has(book.id)) return;
+  examRequests.set(book.id, { loading: true });
+  void loadExamWords(book).then(() => examRequests.delete(book.id))
+    .catch((error) => examRequests.set(book.id, { error })).finally(render);
+}
+
+function renderBookControls(active) {
+  const all = books();
+  const signature = JSON.stringify(all.map(({ id, name }) => [id, name, hiddenBooks.has(id)]));
+  if (renderedBooks !== signature) {
+    renderedBooks = signature;
+    const focusedId = document.activeElement?.dataset.bookId;
+    const visible = all.filter(({ id }) => !hiddenBooks.has(id));
+    bookSelect.replaceChildren(...visible.map(({ id, name }) => new Option(name, id)));
+    if (visible.length === 0) bookSelect.append(new Option("无可见词本", ""));
+    bookSelect.disabled = visible.length === 0;
+    bookVisibility.replaceChildren(...all.map((book) => {
+      const label = document.createElement("label");
+      label.className = "setting-row book-visibility-row";
+      const name = document.createElement("span");
+      name.textContent = book.name;
+      if (book.kind === "exam") {
+        const detail = document.createElement("small");
+        detail.textContent = " · " + book.count.toLocaleString("zh-CN") + " 词";
+        name.append(detail);
+      }
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.className = "toggle";
+      toggle.dataset.bookId = book.id;
+      toggle.checked = !hiddenBooks.has(book.id);
+      toggle.setAttribute("aria-label", "显示" + book.name);
+      label.append(name, toggle);
+      return label;
+    }));
+    if (focusedId) [...bookVisibility.querySelectorAll("input")].find((input) => input.dataset.bookId === focusedId)?.focus();
+  }
+  bookSelect.value = active?.id ?? "";
+  byId("create-book").disabled = !canWriteCustom();
+  feedback("books-sync-message", cloud?.booksError?.code === "permission-denied"
+    ? "让自建词本参与云端同步，请发布新版 Firestore 安全规则，再重新登录。"
+    : cloud?.booksError ? describeError(cloud.booksError)
+      : cloud && !cloud.booksReady ? "正在读取云端自建词本…" : cloud ? "" : localBooksError);
+}
+
+function wordRow(entry, book) {
   const row = document.createElement("li");
   row.className = "word-row word-grid";
   const english = document.createElement("span");
@@ -179,6 +269,8 @@ function wordRow(entry) {
   const meaning = document.createElement("span");
   meaning.className = "meaning-col" + (entry.Meaning ? "" : " muted");
   meaning.textContent = entry.Meaning || "—";
+  row.append(english, meaning);
+  if (book.kind === "exam") return row;
   const actions = document.createElement("span");
   actions.className = "row-actions";
   for (const [id, name, glyph, open] of [
@@ -190,7 +282,7 @@ function wordRow(entry) {
     button.dataset.action = id;
     button.title = name;
     button.setAttribute("aria-label", name + " " + entry.Word);
-    button.disabled = !canWrite();
+    button.disabled = !canWrite(book);
     button.append(icon(glyph));
     button.addEventListener("click", () => open(entry));
     actions.append(button);
@@ -200,27 +292,46 @@ function wordRow(entry) {
     event.preventDefault();
     openEditor(entry);
   });
-  row.append(english, meaning, actions);
+  row.append(actions);
   return row;
 }
 
 function render() {
   const terms = search.value.trim().toLowerCase();
-  const words = currentWords();
+  const book = activeBook();
+  loadSelectedExam(book);
+  renderBookControls(book);
+  const words = bookWords(book) ?? [];
+  const exam = book?.kind === "exam";
+  const packRequest = exam ? examRequests.get(book.id) : null;
+  const waiting = book && (exam ? !getExamWords(book.id) : cloud &&
+    !(book.kind === "personal" ? cloud.ready : cloud.booksReady));
+  list.classList.toggle("read-only", !!exam);
   const allHidden = display.hideEnglish && display.hideMeaning;
-  const visible = allHidden ? [] : words.filter(
-    (entry) => !terms || entry.Word.toLowerCase().includes(terms) || entry.Meaning.toLowerCase().includes(terms)
-  );
-  byId("list-context").textContent = visible.length + (terms ? " 条结果" : " 个词条");
-  byId("list-header").hidden = visible.length === 0;
-  rows.replaceChildren(...visible.map(wordRow));
+  const matches = allHidden ? [] : terms ? words.filter((entry) =>
+    entry.Word.toLowerCase().includes(terms) || entry.Meaning.toLowerCase().includes(terms)) : words;
+  const pages = Math.max(1, Math.ceil(matches.length / pageSize));
+  pageIndex = Math.min(pageIndex, pages - 1);
+  const start = pageIndex * pageSize;
+  const visible = matches.slice(start, start + pageSize);
+  byId("list-context").textContent = !book || waiting || allHidden ? "" : pages > 1
+    ? (start + 1) + "–" + (start + visible.length) + " / " + matches.length
+    : matches.length + (terms ? " 条结果" : " 个词条");
+  byId("pagination").hidden = pages <= 1;
+  byId("prev-page").disabled = pageIndex === 0;
+  byId("next-page").disabled = pageIndex + 1 >= pages;
+  rows.replaceChildren(...visible.map((entry) => wordRow(entry, book)));
   byId("empty").hidden = visible.length > 0;
-  byId("empty-text").textContent = allHidden ? "英文和中文均已隐藏，可在设置中恢复显示。"
-    : cloud && !cloud.ready ? (cloud.error ? "云端词条暂不可用" : "正在读取云端词条…")
+  byId("retry-book").hidden = !packRequest?.error;
+  byId("empty-text").textContent = !book ? "在设置的「词本」中选择要显示的词本。"
+    : allHidden ? "英文和中文均已隐藏，可在设置中恢复显示。"
+    : waiting ? (packRequest?.error ? packRequest.error.message
+      : cloud && !exam && (book.kind === "personal" ? cloud.error : cloud.booksError)
+        ? "云端词条暂不可用" : exam ? "正在载入词本…" : "正在读取云端词条…")
       : terms ? "未找到匹配的词条" : "暂无词条";
-  add.disabled = !canWrite() || words.length >= wordLimit;
-  byId("practice-button").disabled = connecting || !!(cloud && !cloud.ready && words.length === 0);
-  add.title = words.length >= wordLimit ? "已达到 500 条上限" : "添加单词";
+  add.disabled = !canWrite(book) || words.length >= wordLimit;
+  add.title = exam ? "在个人或自建词本中添加单词"
+    : words.length >= wordLimit ? "已达到 500 条上限" : "添加单词";
   const syncLabel = cloud?.error ? "连接异常" : cloud?.ready ? "已同步" : cloud || connecting ? "正在连接" : "仅本机";
   byId("cloud-text").textContent = syncLabel;
   const cloudButton = byId("cloud-button");
@@ -234,29 +345,54 @@ function render() {
   byId("cloud-form").hidden = !!cloud;
   byId("sign-in").disabled = connecting;
   byId("sign-out").disabled = connecting || working;
+  const remoteWords = personalWords();
   byId("merge-local").hidden = !cloud?.ready || !localWords.some((entry) =>
-    !words.some((remote) => remote.Word.trim().toLowerCase() === entry.Word.trim().toLowerCase()));
-  byId("merge-local").disabled = !canWrite();
+    !remoteWords.some((remote) => remote.Word.trim().toLowerCase() === entry.Word.trim().toLowerCase()));
+  byId("merge-local").disabled = !canWrite(personalBook);
+  byId("merge-local-books").hidden = !cloud?.booksReady || localBooks.length === 0;
+  byId("merge-local-books").disabled = !canWriteCustom();
 }
 
 function openSettings(tab) {
-  const showCloud = tab === "cloud";
-  byId("display-tab").setAttribute("aria-pressed", String(!showCloud));
-  byId("cloud-tab").setAttribute("aria-pressed", String(showCloud));
-  byId("display-panel").hidden = showCloud;
-  byId("cloud-panel").hidden = !showCloud;
+  for (const panel of ["display", "books", "cloud"]) {
+    byId(panel + "-tab").setAttribute("aria-pressed", String(panel === tab));
+    byId(panel + "-panel").hidden = panel !== tab;
+  }
   if (!settings.open) settings.showModal();
 }
 
 byId("settings-button").addEventListener("click", () => openSettings("display"));
 byId("cloud-button").addEventListener("click", () => openSettings("cloud"));
 byId("display-tab").addEventListener("click", () => openSettings("display"));
+byId("books-tab").addEventListener("click", () => openSettings("books"));
 byId("cloud-tab").addEventListener("click", () => openSettings("cloud"));
-search.addEventListener("input", render);
+search.addEventListener("input", () => { pageIndex = 0; render(); });
+bookSelect.addEventListener("change", () => {
+  chosenBookId = bookSelect.value;
+  pageIndex = 0;
+  search.value = "";
+  saveBookDisplay();
+  render();
+});
+bookVisibility.addEventListener("change", (event) => {
+  const id = event.target.dataset.bookId;
+  if (!id) return;
+  if (event.target.checked) hiddenBooks.delete(id);
+  else hiddenBooks.add(id);
+  pageIndex = 0;
+  saveBookDisplay();
+  render();
+});
+byId("prev-page").addEventListener("click", () => { pageIndex = Math.max(0, pageIndex - 1); render(); });
+byId("next-page").addEventListener("click", () => { pageIndex++; render(); });
+byId("retry-book").addEventListener("click", () => {
+  examRequests.delete(activeBook()?.id);
+  render();
+});
 
 function openEditor(entry = null) {
   if (!canWrite()) return;
-  editing = { entry, library: library() };
+  editing = { entry, library: library(), bookId: activeBook().id };
   byId("editor-title").textContent = entry ? "编辑单词" : "添加单词";
   byId("word").value = entry?.Word ?? "";
   byId("meaning").value = entry?.Meaning ?? "";
@@ -268,7 +404,7 @@ function openEditor(entry = null) {
 
 function openRemove(entry) {
   if (!canWrite()) return;
-  deleting = { entry, library: library() };
+  deleting = { entry, library: library(), bookId: activeBook().id };
   byId("remove-prompt").textContent = "确定删除「" + entry.Word + "」？";
   feedback("remove-error");
   remove.showModal();
@@ -282,8 +418,27 @@ function notify(message) {
   noticeTimer = setTimeout(() => { notice.textContent = ""; }, 2400);
 }
 
-async function storeChange(change, target) {
+async function storeBooksChange(change, target) {
+  if (library() !== target) throw new Error("当前账号已切换，请重试。");
+  if (cloud) {
+    if (!cloud.booksReady) throw new Error("云端自建词本尚未连接，请稍后重试。");
+    await connection.saveBooks(change);
+  } else {
+    localBooks = loadLocalBooks();
+    if (localBooksError) throw new Error(localBooksError);
+    const next = changeBooks(localBooks, change);
+    encodeBooks(next);
+    if (!remember(localBooksKey, next)) throw new Error("浏览器无法保存本机词本。");
+    localBooks = next;
+  }
+}
+
+async function storeChange(change, target, bookId) {
   if (library() !== target) throw new Error("当前单词本已切换，请重新打开词条。");
+  if (bookId !== personalBook.id) {
+    await storeBooksChange({ type: "word", id: bookId, change }, target);
+    return;
+  }
   if (cloud) {
     if (!cloud.ready) throw new Error("云端尚未连接，请稍后重试。");
     await connection.save(change);
@@ -303,9 +458,12 @@ async function finishEdit(change, draft, dialog, button, errorId, success) {
   render();
   feedback(errorId);
   try {
-    await storeChange(change, draft.library);
+    await storeChange(change, draft.library, draft.bookId);
     dialog.close();
-    if (change.type === "add" && search.value) search.value = "";
+    if (change.type === "add") {
+      search.value = "";
+      pageIndex = Math.floor((bookWords(activeBook())?.length ?? 0) / pageSize);
+    }
     notify(success);
   } catch (error) {
     feedback(errorId, describeError(error));
@@ -318,6 +476,30 @@ async function finishEdit(change, draft, dialog, button, errorId, success) {
 }
 
 add.addEventListener("click", () => openEditor());
+byId("create-book-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!canWriteCustom()) return;
+  const input = byId("new-book-name");
+  const change = { type: "create", id: "custom-" + crypto.randomUUID(), name: input.value };
+  const target = library();
+  working = true;
+  feedback("books-message");
+  render();
+  try {
+    await storeBooksChange(change, target);
+    chosenBookId = change.id;
+    pageIndex = 0;
+    search.value = "";
+    saveBookDisplay();
+    input.value = "";
+    notify("词本已新建");
+  } catch (error) {
+    feedback("books-message", describeError(error));
+  } finally {
+    working = false;
+    render();
+  }
+});
 byId("word-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const change = {
@@ -395,14 +577,30 @@ byId("sign-out").addEventListener("click", async () => {
   }
 });
 byId("merge-local").addEventListener("click", async () => {
-  if (!canWrite() || !cloud?.ready || localWords.length === 0) return;
+  if (!canWrite(personalBook) || !cloud?.ready || localWords.length === 0) return;
   const target = library();
   working = true;
   feedback("cloud-message");
   render();
   try {
-    await storeChange({ type: "merge", words: localWords }, target);
+    await storeChange({ type: "merge", words: localWords }, target, personalBook.id);
     notify("本机词条已合并，重名词保留云端版本。");
+  } catch (error) {
+    feedback("cloud-message", describeError(error));
+  } finally {
+    working = false;
+    render();
+  }
+});
+byId("merge-local-books").addEventListener("click", async () => {
+  if (!canWriteCustom() || !cloud?.booksReady || localBooks.length === 0) return;
+  const target = library();
+  working = true;
+  feedback("cloud-message");
+  render();
+  try {
+    await storeBooksChange({ type: "merge", books: localBooks }, target);
+    notify("本机自建词本已合并");
   } catch (error) {
     feedback("cloud-message", describeError(error));
   } finally {
@@ -413,14 +611,20 @@ byId("merge-local").addEventListener("click", async () => {
 
 window.addEventListener("storage", (event) => {
   if (event.key === localKey || event.key === null) {
-    localLoadError = "";
     localWords = loadLocalWords();
+    render();
+  }
+  if (event.key === localBooksKey || event.key === null) {
+    localBooks = loadLocalBooks();
     render();
   }
 });
 
 applyDisplay();
-setupPractice(currentWords);
+setupPractice({
+  getBooks: books, activeId: () => activeBook()?.id,
+  readWords: bookWords, loadWords: (book) => book.kind === "exam" ? loadExamWords(book) : bookWords(book)
+});
 render();
 const savedConfig = getSaved(configKey);
 if (savedConfig) {
