@@ -363,7 +363,7 @@ function render() {
       : terms ? "未找到匹配的词条" : "暂无词条";
   add.disabled = !canWrite(book) || words.length >= wordLimit;
   add.title = exam ? "在个人或自建词本中添加单词"
-    : words.length >= wordLimit ? "已达到 500 条上限" : "添加单词";
+    : words.length >= wordLimit ? `已达到 ${wordLimit} 条上限` : "添加单词";
   const syncLabel = cloud?.error ? "连接异常" : cloud?.ready ? "已同步" : cloud || connecting ? "正在连接" : "仅本机";
   byId("cloud-text").textContent = syncLabel;
   const cloudButton = byId("cloud-button");

@@ -1,4 +1,4 @@
-export const wordLimit = 500;
+export const wordLimit = 1500;
 const maxBytes = 1_000_000;
 const normalize = (value) => value.trim().toLowerCase();
 
@@ -21,7 +21,7 @@ export function changeWords(words, change) {
       result.push({ Word: entry.Word, Meaning: entry.Meaning });
       known.add(key);
     }
-    if (result.length > wordLimit) throw new Error("合并后会超过 500 条，云端词条未更改。");
+    if (result.length > wordLimit) throw new Error(`合并后会超过 ${wordLimit} 条，云端词条未更改。`);
     return result;
   }
 
@@ -43,7 +43,7 @@ export function changeWords(words, change) {
   }
   if (index >= 0) result[index] = { ...result[index], Word, Meaning };
   else {
-    if (result.length >= wordLimit) throw new Error("单词本最多保存 500 条。");
+    if (result.length >= wordLimit) throw new Error(`单词本最多保存 ${wordLimit} 条。`);
     result.push({ Word, Meaning });
   }
   return result;
