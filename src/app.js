@@ -10,6 +10,7 @@ const byId = (id) => document.getElementById(id);
 const prefKey = "mizu-web:display";
 const localKey = "mizu-web:words";
 const configKey = "mizu-web:firebase";
+const keepLoginKey = "mizu-web:firebase-keep-login";
 const localBooksKey = "mizu-web:custom-books";
 const bookDisplayKey = "mizu-web:book-display";
 const pageSize = 50;
@@ -74,8 +75,17 @@ const search = byId("search");
 const list = byId("word-list");
 const rows = byId("rows");
 const configInput = byId("firebase-config");
+const configFile = byId("firebase-config-file");
+const configImport = byId("import-firebase-config");
+const configExport = byId("export-firebase-config");
+const keepLogin = byId("firebase-keep-login");
+const cloudForm = byId("cloud-form");
+const cloudLogin = byId("cloud-login");
+const signIn = byId("sign-in");
 const emailInput = byId("email");
 const passwordInput = byId("password");
+let savedKeepLogin = readJson(keepLoginKey) === true;
+keepLogin.checked = savedKeepLogin;
 let localWords = loadLocalWords();
 let localBooks = loadLocalBooks();
 const bookDisplay = readJson(bookDisplayKey) ?? {};
@@ -375,8 +385,12 @@ function render() {
   byId("account").hidden = !cloud;
   byId("account-email").textContent = cloud?.email ?? "";
   byId("account-project").textContent = cloud?.project ?? "";
-  byId("cloud-form").hidden = !!cloud;
-  byId("sign-in").disabled = connecting;
+  byId("cloud-config-editor").hidden = !!cloud;
+  configImport.hidden = !!cloud;
+  configImport.disabled = configExport.disabled = keepLogin.disabled = connecting;
+  if (cloud) cloudForm.remove();
+  else if (cloudForm.parentNode !== cloudLogin) cloudLogin.append(cloudForm);
+  signIn.disabled = connecting;
   byId("sign-out").disabled = connecting || working;
   const remoteWords = personalWords();
   byId("merge-local").hidden = !cloud?.ready || !localWords.some((entry) =>
@@ -661,11 +675,69 @@ async function startConnection(config) {
     cloud = state;
     feedback("cloud-message", state?.error ? describeError(state.error) : "");
     render();
-  });
+  }, savedKeepLogin);
   await connection.ready;
 }
 
-byId("cloud-form").addEventListener("submit", async (event) => {
+configImport.addEventListener("click", () => configFile.click());
+configFile.addEventListener("change", async () => {
+  const [file] = configFile.files;
+  configFile.value = "";
+  if (!file || connecting || cloud) return;
+  try {
+    if (file.size > configInput.maxLength) throw new Error("Firebase 配置文件最多 12 KB。");
+    const config = parseFirebaseConfig(await file.text());
+    if (connecting || cloud) return;
+    configInput.value = JSON.stringify(config, null, 2);
+    if (!remember(configKey, config)) throw new Error("配置已填入，但浏览器无法保留它。");
+    feedback("cloud-message");
+    notify("配置已导入，请登录 Firebase");
+  } catch (error) {
+    feedback("cloud-message", describeError(error));
+  }
+});
+
+configExport.addEventListener("click", () => {
+  try {
+    const config = cloud ? selectedConfig : parseFirebaseConfig(configInput.value);
+    const file = new Blob([JSON.stringify(config, null, 2) + "\n"], { type: "application/json" });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "mizu-firebase-" + config.projectId + ".json";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    feedback("cloud-message");
+  } catch (error) {
+    feedback("cloud-message", describeError(error));
+  }
+});
+
+function rememberLoginPreference(keep) {
+  savedKeepLogin = keep;
+  return remember(keepLoginKey, keep);
+}
+
+keepLogin.addEventListener("change", async () => {
+  if (!cloud || connecting) return;
+  const keep = keepLogin.checked;
+  connecting = true;
+  render();
+  try {
+    await connection.setKeepLogin(keep);
+    if (!rememberLoginPreference(keep)) throw new Error("浏览器无法保存保持登录的偏好。");
+    feedback("cloud-message");
+    notify(keep ? "已设置在此设备保持登录" : "登录将只保留在当前标签页");
+  } catch (error) {
+    keepLogin.checked = savedKeepLogin;
+    feedback("cloud-message", describeError(error));
+  } finally {
+    connecting = false;
+    render();
+  }
+});
+
+cloudForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (connecting) return;
   connecting = true;
@@ -674,10 +746,14 @@ byId("cloud-form").addEventListener("submit", async (event) => {
   try {
     const config = parseFirebaseConfig(configInput.value);
     await startConnection(config);
-    await connection.signIn(emailInput.value.trim(), passwordInput.value);
-    remember(configKey, config);
+    const keep = keepLogin.checked;
+    await connection.signIn(emailInput.value.trim(), passwordInput.value, keep);
     configInput.value = JSON.stringify(config, null, 2);
     passwordInput.value = "";
+    const configSaved = remember(configKey, config);
+    const preferenceSaved = rememberLoginPreference(keep);
+    if (!configSaved || !preferenceSaved)
+      feedback("cloud-message", "已登录，但浏览器无法保留配置或登录偏好。");
   } catch (error) {
     feedback("cloud-message", describeError(error));
   } finally {

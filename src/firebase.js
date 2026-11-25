@@ -1,5 +1,5 @@
 import { deleteApp, initializeApp } from "firebase/app";
-import { browserSessionPersistence, connectAuthEmulator, initializeAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { browserLocalPersistence, browserSessionPersistence, connectAuthEmulator, initializeAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { Bytes, connectFirestoreEmulator, doc, getFirestore, onSnapshot, runTransaction } from "firebase/firestore";
 import { changeWords, decodeSnapshot, encodeSnapshot, newSnapshot } from "./words.js";
 import { changeBooks, decodeBooks, encodeBooks } from "./books.js";
@@ -19,9 +19,11 @@ function readPayload(document) {
   return payload.toUint8Array();
 }
 
-export function createFirebaseConnection(config, onState) {
+const loginPersistence = (keep) => keep ? browserLocalPersistence : browserSessionPersistence;
+
+export function createFirebaseConnection(config, onState, keepLogin = false) {
   const app = initializeApp(config, "mizu-wordbook");
-  const auth = initializeAuth(app, { persistence: browserSessionPersistence });
+  const auth = initializeAuth(app, { persistence: loginPersistence(keepLogin) });
   const firestore = getFirestore(app);
   if (import.meta.env.DEV && import.meta.env.VITE_FIREBASE_EMULATOR === "1") {
     connectAuthEmulator(auth, "http://127.0.0.1:19099", { disableWarnings: true });
@@ -68,7 +70,11 @@ export function createFirebaseConnection(config, onState) {
 
   return {
     ready: auth.authStateReady(),
-    signIn: (email, password) => signInWithEmailAndPassword(auth, email, password),
+    async signIn(email, password, keep) {
+      await setPersistence(auth, loginPersistence(keep));
+      return signInWithEmailAndPassword(auth, email, password);
+    },
+    setKeepLogin: (keep) => setPersistence(auth, loginPersistence(keep)),
     signOut: () => signOut(auth),
     save(change) {
       if (!auth.currentUser) throw new Error("请重新登录 Firebase。");

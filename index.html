@@ -151,15 +151,29 @@
           <div><strong id="account-email"></strong><small id="account-project"></small></div>
           <button type="button" class="text-button" id="sign-out">退出</button>
         </div>
-        <form id="cloud-form">
+        <div id="cloud-config-editor">
           <label for="firebase-config">Firebase 网页配置</label>
-          <textarea id="firebase-config" rows="5" maxlength="12000" spellcheck="false" placeholder="粘贴 Firebase 控制台复制的 firebaseConfig" required></textarea>
-          <label for="email">Firebase 账号邮箱</label>
-          <input id="email" type="email" autocomplete="username" required>
-          <label for="password">密码</label>
-          <input id="password" type="password" autocomplete="current-password" required>
-          <button id="sign-in" class="primary" type="submit">登录并连接</button>
-        </form>
+          <textarea id="firebase-config" rows="4" maxlength="12000" spellcheck="false" placeholder="粘贴 Firebase 网页配置，或导入桌面版导出的文件"></textarea>
+        </div>
+        <div class="cloud-config-actions">
+          <input type="file" id="firebase-config-file" accept=".json,.js,.txt" hidden>
+          <button id="import-firebase-config" class="secondary" type="button">导入配置</button>
+          <button id="export-firebase-config" class="secondary" type="button">导出配置</button>
+        </div>
+        <div id="cloud-login">
+          <form id="cloud-form" autocomplete="on" method="post">
+            <label for="email">Firebase 账号邮箱</label>
+            <input id="email" name="email" type="email" autocomplete="username" required>
+            <label for="password">密码</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+            <button id="sign-in" class="primary" type="submit" disabled>登录并连接</button>
+          </form>
+        </div>
+        <label class="setting-row cloud-keep-login">
+          <span>在此设备保持登录</span>
+          <input id="firebase-keep-login" type="checkbox" class="toggle" aria-describedby="firebase-keep-description">
+        </label>
+        <p id="firebase-keep-description" class="settings-note">适合个人设备。清除网站数据后需要重新登录。</p>
         <p id="cloud-message" class="feedback" role="status" hidden></p>
         <button id="merge-local" class="secondary" type="button" hidden>合并本机词条到云端</button>
         <button id="merge-local-books" class="secondary" type="button" hidden>合并本机自建词本</button>

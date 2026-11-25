@@ -272,7 +272,7 @@ h2 { font-weight: 625; font-size: 23px; letter-spacing: -.045em; }
 .modal { width: 454px; padding: 21px 24px 23px; border-radius: 20px; }
 .modal-heading { margin: 0 0 7px; }
 .modal p { margin-top: 12px; line-height: 1.65; overflow-wrap: anywhere; }
-.modal form > label, #cloud-form > label { display: block; margin: 12px 0 6px; font-size: 14px; font-weight: 550; }
+.modal form > label, #cloud-form > label, #cloud-config-editor label { display: block; margin: 12px 0 6px; font-size: 14px; font-weight: 550; }
 #word, textarea, #cloud-form input {
   background: var(--surface); border: 1px solid var(--line); padding: 10px 11px;
   width: 100%; border-radius: 9px; font-size: 1rem;
@@ -344,6 +344,9 @@ textarea { resize: vertical; min-height: 70px; }
 .practice-mistakes-list p { color: var(--quiet); font-size: 14px; margin-top: 4px; }
 #cloud-form { padding-bottom: 14px; }
 #cloud-form .primary { width: 100%; margin-top: 16px; }
+.cloud-config-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-block: 8px; }
+.cloud-config-actions button { padding-inline: 11px; }
+.cloud-keep-login { margin-top: 8px; }
 #firebase-config { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .account {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
