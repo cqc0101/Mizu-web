@@ -101,6 +101,7 @@ const examRequests = new Map();
 let connection;
 let selectedConfig;
 let cloud = null;
+let refreshPractice;
 let connecting = false;
 let working = false;
 let editing;
@@ -383,6 +384,7 @@ function render() {
   byId("merge-local").disabled = !canWrite(personalBook);
   byId("merge-local-books").hidden = !cloud?.booksReady || localBooks.length === 0;
   byId("merge-local-books").disabled = !canWriteCustom();
+  refreshPractice?.();
 }
 
 function openSettings(tab) {
@@ -743,9 +745,17 @@ window.addEventListener("storage", (event) => {
 
 applyDisplay();
 setupPoetry();
-setupPractice({
-  getBooks: books, activeId: () => activeBook()?.id,
-  readWords: bookWords, loadWords: (book) => book.kind === "exam" ? loadExamWords(book) : bookWords(book)
+refreshPractice = setupPractice({
+  getBooks: books, activeId: () => activeBook()?.id, library,
+  loadWords(book) {
+    if (book.kind === "exam") return loadExamWords(book);
+    const ready = book.kind === "personal" ? cloud?.ready : cloud?.booksReady;
+    const error = book.kind === "personal" ? cloud?.error : cloud?.booksError;
+    const words = bookWords(book);
+    if (!words.length && (connecting || (cloud && !ready)))
+      throw new Error(error ? describeError(error) : "正在读取云端词本，请稍后重试。");
+    return words;
+  }
 });
 render();
 const savedConfig = getSaved(configKey);

@@ -29,3 +29,14 @@ test("四选一提供四个不同释义和唯一正确答案", () => {
   }
   assert.deepEqual(createPracticeCards(words.slice(4), "choice"), { cards: [], reason: "choices" });
 });
+
+test("题数可调整，无限练习每轮用完词本后避免紧接着抽到同一词", () => {
+  assert.equal(createPracticeCards(words, "self", () => 0, { limit: 2 }).cards.length, 2);
+  const { cards } = createPracticeCards(words, "choice", () => 0, { limit: Infinity });
+  assert.equal(cards.length, 6);
+  assert.ok(cards.every((card) => new Set(card.options).size === 4 && card.options.includes(card.answer)));
+  const previousWord = cards[0].word;
+  const repeat = createPracticeCards(words, "choice", () => 0, { limit: Infinity, previousWord });
+  assert.notEqual(repeat.cards[0].word, previousWord);
+  assert.deepEqual(new Set(repeat.cards.map(({ word }) => word)), new Set(cards.map(({ word }) => word)));
+});

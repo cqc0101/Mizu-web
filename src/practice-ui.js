@@ -1,19 +1,52 @@
-import { createPracticeCards } from "./practice.js";
+import { createPracticeCards, practiceWordKey } from "./practice.js";
 
 const modeKey = "mizu-web:practice-mode";
 const booksKey = "mizu-web:practice-books";
+const limitKey = "mizu-web:practice-limit";
 const byId = (id) => document.getElementById(id);
 
-function savedMode() {
-  try { return localStorage.getItem(modeKey) === "choice" ? "choice" : "self"; }
-  catch { return "self"; }
+function stored(key, fallback) {
+  try { return localStorage.getItem(key) ?? fallback; }
+  catch { return fallback; }
 }
 
-export function setupPractice({ getBooks, activeId, readWords, loadWords }) {
-  const dialog = byId("practice");
-  const modeButtons = [...dialog.querySelectorAll("[data-mode]")];
-  const empty = byId("practice-empty");
+function readJson(key, fallback) {
+  try { return JSON.parse(stored(key, "null")) ?? fallback; }
+  catch { return fallback; }
+}
+
+function save(key, value) {
+  try { localStorage.setItem(key, value); return true; }
+  catch { return false; }
+}
+
+function loadMistakes(key) {
+  const rows = readJson(key, []);
+  if (!Array.isArray(rows)) return new Map();
+  return new Map(rows.filter((row) => typeof row?.word === "string" && row.word.trim() &&
+    typeof row.answer === "string" && row.answer.trim() && Number.isSafeInteger(row.misses) && row.misses > 0)
+    .map((row) => [practiceWordKey(row.word), row]));
+}
+
+export function setupPractice({ getBooks, activeId, loadWords, library }) {
+  const page = byId("practice");
+  const home = [document.querySelector(".wordbook-topbar"), byId("wordbook-home")];
+  const opener = byId("practice-button");
+  const title = byId("practice-title");
+  const homeTitle = document.title;
+  const practiceTab = byId("practice-tab");
+  const mistakeTab = byId("practice-mistakes-tab");
+  const setup = byId("practice-setup");
   const question = byId("practice-question");
+  const finish = byId("practice-finish");
+  const mistakePanel = byId("practice-mistakes");
+  const picker = byId("practice-book-options");
+  const selectAll = byId("practice-select-all");
+  const start = byId("practice-apply-books");
+  const modeButtons = [...setup.querySelectorAll("[data-mode]")];
+  const size = byId("practice-round-size");
+  const unlimited = byId("practice-unlimited");
+  const status = byId("practice-load");
   const progress = byId("practice-progress");
   const count = byId("practice-count");
   const word = byId("practice-word");
@@ -23,86 +56,111 @@ export function setupPractice({ getBooks, activeId, readWords, loadWords }) {
   const forgot = byId("practice-forgot");
   const knew = byId("practice-knew");
   const next = byId("practice-next");
-  const finish = byId("practice-finish");
   const result = byId("practice-result");
   const restart = byId("practice-restart");
-  const picker = byId("practice-books");
-  const pickerSummary = byId("practice-books-summary");
-  const pickerOptions = byId("practice-book-options");
-  const selectAll = byId("practice-select-all");
-  const applyBooks = byId("practice-apply-books");
-  const status = byId("practice-load");
-  let mode = savedMode();
-  const rounds = new Map();
+  const review = byId("practice-review");
+  const mistakeList = byId("practice-mistakes-list");
+  const mistakeError = byId("practice-mistake-error");
+
+  let mode = stored(modeKey, "self") === "choice" ? "choice" : "self";
+  const preferences = readJson(limitKey, {});
+  if (Number.isInteger(preferences.size) && preferences.size >= 1 && preferences.size <= Number(size.max))
+    size.value = String(preferences.size);
+  unlimited.checked = preferences.unlimited === true;
+
+  let homeScroll = 0;
   let available = [];
+  let availableKey = "";
   let selection = new Set();
-  let roundWords = [];
-  let dirty = false;
   let loading = false;
-  let loadError = "";
+  let message = "";
   let generation = 0;
+  let round = null;
+  let view = "practice";
+  let scope;
+  let mistakesKey;
+  let mistakes = new Map();
 
-  function startRound() {
-    const round = { ...createPracticeCards(roundWords, mode), index: 0, score: 0, response: null };
-    rounds.set(mode, round);
-    return round;
-  }
-
-  function grade(correct) {
-    const round = rounds.get(mode);
-    round.score += Number(correct);
-    round.index++;
-    round.response = null;
-    render();
-    (question.hidden ? restart : word).focus();
-  }
-
-  function render() {
+  function renderSetup() {
     for (const button of modeButtons) {
       button.setAttribute("aria-pressed", String(button.dataset.mode === mode));
+      button.disabled = loading;
     }
     selectAll.checked = available.length > 0 && selection.size === available.length;
     selectAll.indeterminate = selection.size > 0 && !selectAll.checked;
     selectAll.disabled = loading;
-    applyBooks.disabled = loading || selection.size === 0;
-    for (const input of pickerOptions.querySelectorAll("input")) {
+    for (const input of picker.querySelectorAll("input")) {
       input.checked = selection.has(input.value);
       input.disabled = loading;
     }
-    pickerSummary.textContent = selection.size === 1
-      ? "练习词本 · " + available.find(({ id }) => selection.has(id)).name
-      : "练习词本 · " + selection.size + " 本";
-    const message = loading ? "正在载入所选词本…" : loadError || (dirty ? "选择词本后，点击开始练习。" : "");
-    status.textContent = message;
-    status.hidden = !message;
-    if (message) {
-      empty.hidden = question.hidden = finish.hidden = true;
-      return;
-    }
-    const round = rounds.get(mode) ?? startRound();
-    const card = round.cards[round.index];
-    const self = mode === "self";
-    const answered = round.response !== null;
-    empty.hidden = !round.reason;
-    question.hidden = !card;
-    finish.hidden = !!round.reason || !!card;
-    if (round.reason) {
-      empty.textContent = round.reason === "empty" ? "先添加带中文释义的单词，就能开始练习。"
-        : "四选一需要至少四种不同的释义。可以切换到自测。";
-      return;
-    }
-    if (!card) {
-      result.textContent = (self ? "记得 " : "答对 ") + round.score + " / " + round.cards.length + " 题";
-      return;
-    }
+    size.disabled = unlimited.checked || loading;
+    unlimited.disabled = loading;
+    start.disabled = loading || selection.size === 0;
+    status.textContent = loading ? "正在载入所选词本…" : message;
+    status.hidden = !status.textContent;
+  }
 
+  function renderMistakes() {
+    byId("practice-mistake-count").textContent = mistakes.size ? mistakes.size + " 个错词" : "还没有错词";
+    review.disabled = mistakes.size === 0;
+    const rows = [...mistakes].reverse().map(([key, entry]) => {
+      const row = document.createElement("li");
+      const text = document.createElement("div");
+      const term = document.createElement("strong");
+      const meaning = document.createElement("p");
+      const remove = document.createElement("button");
+      term.lang = "en";
+      term.textContent = entry.word;
+      meaning.textContent = entry.answer + " · 错 " + entry.misses + " 次";
+      remove.type = "button";
+      remove.className = "text-button";
+      remove.textContent = "移除";
+      remove.setAttribute("aria-label", "移除错词 " + entry.word);
+      remove.addEventListener("click", () => {
+        updateMistakes((current) => current.delete(key));
+        renderMistakes();
+        (mistakes.size ? review : mistakeTab).focus();
+      });
+      text.append(term, meaning);
+      row.append(text, remove);
+      return row;
+    });
+    mistakeList.replaceChildren(...rows);
+  }
+
+  function updateMistakes(update) {
+    const current = mistakeError.hidden ? loadMistakes(mistakesKey) : new Map(mistakes);
+    update(current);
+    mistakes = current;
+    mistakeError.hidden = save(mistakesKey, JSON.stringify([...current.values()]));
+    mistakeError.textContent = "浏览器暂时无法保存错词，本页仍可复习。";
+  }
+
+  function recordAnswer(card, correct) {
+    round.answered++;
+    round.score += Number(correct);
+    if (correct) return;
+    const key = practiceWordKey(card.word);
+    updateMistakes((current) => {
+      const misses = (current.get(key)?.misses ?? 0) + 1;
+      current.delete(key);
+      current.set(key, { word: card.word, answer: card.answer, misses });
+    });
+  }
+
+  function renderQuestion() {
+    const card = round.cards[round.index];
+    const self = round.mode === "self";
+    const answered = round.response !== null;
+    progress.hidden = round.limit === Infinity;
     progress.max = round.cards.length;
     progress.value = round.index + 1;
-    count.textContent = (round.index + 1) + " / " + round.cards.length;
+    const questionNumber = round.answered + (self || !answered ? 1 : 0);
+    count.textContent = round.limit === Infinity ? "第 " + questionNumber + " 题"
+      : (round.index + 1) + " / " + round.cards.length;
     word.textContent = card.word;
     options.hidden = self;
-    options.replaceChildren();
-    for (const answer of card.options ?? []) {
+    options.replaceChildren(...(card.options ?? []).map((answer) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "secondary practice-option";
@@ -113,113 +171,229 @@ export function setupPractice({ getBooks, activeId, readWords, loadWords }) {
       button.addEventListener("click", () => {
         if (round.response !== null) return;
         round.response = answer;
-        render();
+        recordAnswer(card, answer === card.answer);
+        renderQuestion();
         next.focus();
       });
-      options.append(button);
-    }
+      return button;
+    }));
     feedback.textContent = !answered ? "" : self ? card.answer
       : round.response === card.answer ? "答对了" : "正确释义是「" + card.answer + "」";
     reveal.hidden = !self || answered;
     forgot.hidden = knew.hidden = !self || !answered;
     next.hidden = self || !answered;
-    next.textContent = round.index + 1 === round.cards.length ? "查看结果" : "下一题";
+    next.textContent = round.limit !== Infinity && round.index + 1 === round.cards.length ? "查看结果" : "下一题";
   }
 
-  function updateSelection() {
-    dirty = true;
-    loadError = "";
-    render();
+  function show() {
+    const reviewingBook = view === "mistakes";
+    practiceTab.setAttribute("aria-pressed", String(!reviewingBook));
+    mistakeTab.setAttribute("aria-pressed", String(reviewingBook));
+    setup.hidden = reviewingBook || !!round;
+    question.hidden = reviewingBook || !round || round.complete;
+    finish.hidden = reviewingBook || !round?.complete;
+    mistakePanel.hidden = !reviewingBook;
+    if (reviewingBook) renderMistakes();
+    else if (!finish.hidden) result.textContent = (round.mode === "self" ? "记得 " : "答对 ") + round.score + " / " + round.answered + " 题";
+    else if (!question.hidden) renderQuestion();
+    else renderSetup();
   }
+
+  function startRound(words, roundMode, limit) {
+    const { cards, reason } = createPracticeCards(words, roundMode, Math.random, { limit });
+    if (reason) {
+      message = reason === "empty" ? "所选词本暂无带中文释义的词条。" : "四选一至少需要四种不同的释义，可切换为自测。";
+      round = null;
+      view = "practice";
+      show();
+      return false;
+    }
+    round = { words, mode: roundMode, limit, cards, index: 0, score: 0, answered: 0, response: null, complete: false };
+    view = "practice";
+    show();
+    word.focus();
+    return true;
+  }
+
+  function endRound() {
+    round.complete = true;
+    show();
+    restart.focus();
+  }
+
+  function advance() {
+    const previousWord = round.cards[round.index].word;
+    round.index++;
+    round.response = null;
+    if (round.index === round.cards.length) {
+      if (round.limit !== Infinity) {
+        endRound();
+        return;
+      }
+      round.cards = createPracticeCards(round.words, round.mode, Math.random, { limit: Infinity, previousWord }).cards;
+      round.index = 0;
+    }
+    renderQuestion();
+    word.focus();
+  }
+
+  function refresh() {
+    if (page.hidden) return;
+    const nextScope = library();
+    if (nextScope !== scope) {
+      scope = nextScope;
+      mistakesKey = "mizu-web:practice-mistakes:" + scope;
+      mistakes = loadMistakes(mistakesKey);
+      mistakeError.hidden = true;
+      round = null;
+      generation++;
+      loading = false;
+      message = "";
+      selection.clear();
+      availableKey = "";
+    }
+    const books = getBooks();
+    const key = JSON.stringify(books.map(({ id, name }) => [id, name]));
+    if (key === availableKey) return;
+    const firstLoad = !availableKey;
+    availableKey = key;
+    available = books;
+    const saved = firstLoad ? readJson(booksKey, []) : [...selection];
+    selection = new Set(available.filter(({ id }) => Array.isArray(saved) && saved.includes(id)).map(({ id }) => id));
+    if (firstLoad && !selection.size) selection.add(activeId() ?? available[0].id);
+    picker.replaceChildren(...available.map(({ id, name }) => {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      const text = document.createElement("span");
+      input.type = "checkbox";
+      input.value = id;
+      text.textContent = name;
+      label.append(input, text);
+      return label;
+    }));
+    if (round && view === "practice") return;
+    show();
+  }
+
+  function syncRoute() {
+    const showPractice = location.hash === "#practice";
+    if (showPractice === !page.hidden) return;
+    if (showPractice) homeScroll = window.scrollY;
+    page.hidden = !showPractice;
+    for (const element of home) element.hidden = showPractice;
+    document.title = showPractice ? "Mizu · 单词练习" : homeTitle;
+    if (showPractice) {
+      scope = undefined;
+      view = "practice";
+      refresh();
+      title.focus({ preventScroll: true });
+      window.scrollTo(0, 0);
+    } else {
+      generation++;
+      loading = false;
+      opener.focus({ preventScroll: true });
+      window.scrollTo(0, homeScroll);
+    }
+  }
+
+  opener.addEventListener("click", (event) => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    history.pushState({ practiceFromHome: true }, "", "#practice");
+    syncRoute();
+  });
+  byId("practice-back").addEventListener("click", (event) => {
+    event.preventDefault();
+    if (history.state?.practiceFromHome) history.back();
+    else {
+      history.replaceState(null, "", location.pathname + location.search);
+      syncRoute();
+    }
+  });
+  window.addEventListener("popstate", syncRoute);
+  window.addEventListener("hashchange", syncRoute);
+  window.addEventListener("storage", (event) => {
+    if (page.hidden || (event.key !== mistakesKey && event.key !== null) || !mistakeError.hidden) return;
+    mistakes = loadMistakes(mistakesKey);
+    if (!mistakePanel.hidden) renderMistakes();
+  });
+  practiceTab.addEventListener("click", () => { view = "practice"; show(); });
+  mistakeTab.addEventListener("click", () => { view = "mistakes"; show(); });
+
+  for (const button of modeButtons) button.addEventListener("click", () => {
+    mode = button.dataset.mode;
+    save(modeKey, mode);
+    message = "";
+    renderSetup();
+  });
   selectAll.addEventListener("change", () => {
     selection = new Set(selectAll.checked ? available.map(({ id }) => id) : []);
-    updateSelection();
+    message = "";
+    renderSetup();
   });
-  pickerOptions.addEventListener("change", (event) => {
+  picker.addEventListener("change", (event) => {
     const input = event.target;
     if (input.checked) selection.add(input.value);
     else selection.delete(input.value);
-    updateSelection();
+    message = "";
+    renderSetup();
   });
-  applyBooks.addEventListener("click", async () => {
-    if (loading || selection.size === 0) return;
-    const selected = available.filter(({ id }) => selection.has(id));
+  const limit = () => unlimited.checked ? Infinity : size.valueAsNumber;
+  function saveLimit() {
+    const amount = size.valueAsNumber;
+    save(limitKey, JSON.stringify({ unlimited: unlimited.checked, size: size.validity.valid && Number.isInteger(amount) ? amount : 10 }));
+    renderSetup();
+  }
+  unlimited.addEventListener("change", saveLimit);
+  size.addEventListener("change", saveLimit);
+  setup.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (loading || !selection.size) return;
+    const wanted = available.filter(({ id }) => selection.has(id));
+    const count = limit();
     const attempt = ++generation;
     loading = true;
-    loadError = "";
-    render();
+    message = "";
+    renderSetup();
     try {
-      const lists = await Promise.all(selected.map(loadWords));
-      if (attempt !== generation || !dialog.open) return;
-      roundWords = lists.flat();
-      dirty = false;
-      rounds.clear();
-      try { localStorage.setItem(booksKey, JSON.stringify([...selection])); } catch {}
-      picker.open = false;
+      const lists = await Promise.all(wanted.map(loadWords));
+      if (attempt !== generation) return;
+      save(booksKey, JSON.stringify(wanted.map(({ id }) => id)));
+      if (view === "practice") startRound(lists.flat(), mode, count);
     } catch (error) {
-      if (attempt === generation) loadError = error.message || "词本载入失败，请重试。";
+      if (attempt === generation) message = error.message || "词本载入失败，请重试。";
     } finally {
-      if (attempt === generation && dialog.open) {
+      if (attempt === generation) {
         loading = false;
-        render();
-        if (!question.hidden) word.focus();
+        renderSetup();
       }
     }
   });
-  for (const button of modeButtons) {
-    button.addEventListener("click", () => {
-      mode = button.dataset.mode;
-      try { localStorage.setItem(modeKey, mode); } catch {}
-      render();
-    });
-  }
-  byId("practice-button").addEventListener("click", () => {
-    available = getBooks();
-    let saved = [];
-    try {
-      const stored = JSON.parse(localStorage.getItem(booksKey));
-      if (Array.isArray(stored)) saved = stored;
-    } catch {}
-    selection = new Set(available.filter(({ id }) => saved.includes(id)).map(({ id }) => id));
-    if (selection.size === 0) selection.add(activeId() ?? available[0].id);
-    pickerOptions.replaceChildren(...available.map((book) => {
-      const label = document.createElement("label");
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.value = book.id;
-      const name = document.createElement("span");
-      name.textContent = book.name;
-      label.append(input, name);
-      return label;
-    }));
-    rounds.clear();
-    const lists = available.filter(({ id }) => selection.has(id)).map(readWords);
-    dirty = lists.some((list) => !list);
-    roundWords = dirty ? [] : lists.flat();
-    loadError = "";
-    picker.open = dirty;
-    render();
-    dialog.showModal();
-    if (!question.hidden) word.focus();
-  });
-  dialog.addEventListener("close", () => {
-    generation++;
-    loading = false;
-  });
+
   reveal.addEventListener("click", () => {
-    rounds.get(mode).response = true;
-    render();
+    round.response = true;
+    renderQuestion();
     knew.focus();
   });
-  forgot.addEventListener("click", () => grade(false));
-  knew.addEventListener("click", () => grade(true));
-  next.addEventListener("click", () => {
-    const round = rounds.get(mode);
-    grade(round.response === round.cards[round.index].answer);
+  forgot.addEventListener("click", () => { recordAnswer(round.cards[round.index], false); advance(); });
+  knew.addEventListener("click", () => { recordAnswer(round.cards[round.index], true); advance(); });
+  next.addEventListener("click", advance);
+  byId("practice-end").addEventListener("click", endRound);
+  byId("practice-reconfigure").addEventListener("click", () => { round = null; message = ""; show(); start.focus(); });
+  restart.addEventListener("click", () => startRound(round.words, round.mode, round.limit));
+  review.addEventListener("click", () => {
+    generation++;
+    loading = false;
+    if (!unlimited.checked && !size.validity.valid) {
+      view = "practice";
+      round = null;
+      show();
+      size.reportValidity();
+      return;
+    }
+    const words = [...mistakes.values()].map(({ word, answer }) => ({ Word: word, Meaning: answer }));
+    startRound(words, "self", limit());
   });
-  restart.addEventListener("click", () => {
-    startRound();
-    render();
-    if (!question.hidden) word.focus();
-  });
+  syncRoute();
+  return refresh;
 }

@@ -32,9 +32,9 @@
       <button type="button" class="icon-button toolbar-button" id="search-button" aria-label="搜索词条" title="搜索词条" aria-expanded="false" aria-controls="search-panel">
         <svg><use href="#icon-search"/></svg>
       </button>
-      <button type="button" class="icon-button practice-button" id="practice-button" aria-label="练习模式" title="练习模式">
+      <a href="#practice" class="icon-button practice-button" id="practice-button" aria-label="练习模式" title="练习模式">
         <svg><use href="#icon-practice"/></svg><span>练习</span>
-      </button>
+      </a>
       <a href="./games.html" class="icon-button toolbar-button" id="games-button" aria-label="游戏" title="游戏">
         <svg><use href="#icon-games"/></svg>
       </a>
@@ -57,7 +57,7 @@
     </div>
   </header>
 
-  <main class="workspace">
+  <main class="workspace" id="wordbook-home">
     <section class="notebook" aria-label="词条列表">
       <div class="bookbar">
         <div class="book-select">
@@ -217,45 +217,72 @@
       </div>
     </form>
   </dialog>
-  <dialog id="practice" class="modal practice" aria-labelledby="practice-title">
-    <div class="modal-heading">
-      <h2 id="practice-title">练习</h2>
-      <button type="button" class="icon-button" data-close="practice" aria-label="关闭练习">
-        <svg><use href="#icon-close"/></svg>
-      </button>
+  <main id="practice" class="workspace practice" aria-labelledby="practice-title" hidden>
+    <header class="practice-topbar">
+      <a href="#" class="secondary" id="practice-back">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m13.5 5.5-6.5 6.5 6.5 6.5M7 12h13"/></svg>返回首页
+      </a>
+      <nav class="settings-tabs practice-tabs" aria-label="练习页面">
+        <button type="button" id="practice-tab" aria-pressed="true">练习</button>
+        <button type="button" id="practice-mistakes-tab" aria-pressed="false">错词本</button>
+      </nav>
+    </header>
+    <div class="practice-shell">
+      <h1 id="practice-title" tabindex="-1">单词练习</h1>
+      <form id="practice-setup" class="practice-surface">
+        <fieldset class="practice-field">
+          <legend>练习方式</legend>
+          <div class="settings-tabs practice-modes">
+            <button type="button" data-mode="self" aria-pressed="true">自测</button>
+            <button type="button" data-mode="choice" aria-pressed="false">四选一</button>
+          </div>
+        </fieldset>
+        <fieldset class="practice-field">
+          <legend>练习词本</legend>
+          <label class="practice-select-all"><input id="practice-select-all" type="checkbox">全选</label>
+          <div id="practice-book-options"></div>
+        </fieldset>
+        <div class="practice-limits">
+          <label for="practice-round-size">题目数量</label>
+          <input type="number" id="practice-round-size" min="1" step="1" max="99999" value="10" required>
+          <label class="practice-select-all"><input id="practice-unlimited" type="checkbox">无限练习</label>
+        </div>
+        <button type="submit" class="primary" id="practice-apply-books">开始练习</button>
+        <p id="practice-load" class="practice-empty" role="status" hidden></p>
+      </form>
+      <section id="practice-question" class="practice-surface practice-question" aria-label="当前题目" hidden>
+        <div class="practice-progress">
+          <progress id="practice-progress" aria-label="本轮练习进度"></progress>
+          <span id="practice-count"></span>
+          <button type="button" class="text-button" id="practice-end">结束练习</button>
+        </div>
+        <p id="practice-word" class="practice-word" lang="en" tabindex="-1"></p>
+        <div id="practice-options" class="practice-options" aria-label="选择中文释义" role="group" hidden></div>
+        <p id="practice-feedback" class="practice-feedback" role="status"></p>
+        <div class="practice-actions">
+          <button type="button" class="primary" id="practice-reveal" hidden>显示释义</button>
+          <button type="button" class="secondary" id="practice-forgot" hidden>没记住</button>
+          <button type="button" class="primary" id="practice-knew" hidden>记得</button>
+          <button type="button" class="primary" id="practice-next" hidden>下一题</button>
+        </div>
+      </section>
+      <section id="practice-finish" class="practice-surface practice-finish" hidden>
+        <p id="practice-result" role="status"></p>
+        <div class="practice-actions">
+          <button type="button" class="secondary" id="practice-reconfigure">调整练习</button>
+          <button type="button" class="primary" id="practice-restart">再练一轮</button>
+        </div>
+      </section>
+      <section id="practice-mistakes" class="practice-surface" aria-label="错词本" hidden>
+        <div class="practice-mistakes-heading">
+          <p id="practice-mistake-count"></p>
+          <button type="button" class="primary" id="practice-review">复习错词</button>
+        </div>
+        <ul id="practice-mistakes-list" class="practice-mistakes-list"></ul>
+        <p id="practice-mistake-error" class="feedback" role="status" hidden></p>
+      </section>
     </div>
-    <div class="settings-tabs practice-modes" aria-label="练习方式">
-      <button type="button" data-mode="self" aria-pressed="true">自测</button>
-      <button type="button" data-mode="choice" aria-pressed="false">四选一</button>
-    </div>
-    <details class="practice-books" id="practice-books">
-      <summary id="practice-books-summary">练习词本</summary>
-      <label class="practice-select-all"><input id="practice-select-all" type="checkbox">全选</label>
-      <fieldset id="practice-book-options" aria-label="选择练习词本"></fieldset>
-      <button type="button" class="primary" id="practice-apply-books">开始练习</button>
-    </details>
-    <p id="practice-load" class="practice-empty" role="status" hidden></p>
-    <p id="practice-empty" class="practice-empty" role="status" hidden></p>
-    <section id="practice-question" hidden>
-      <div class="practice-progress">
-        <progress id="practice-progress" aria-label="本轮练习进度"></progress>
-        <span id="practice-count"></span>
-      </div>
-      <p id="practice-word" class="practice-word" lang="en" tabindex="-1"></p>
-      <div id="practice-options" class="practice-options" aria-label="选择中文释义" role="group" hidden></div>
-      <p id="practice-feedback" class="practice-feedback" role="status"></p>
-      <div class="practice-actions">
-        <button type="button" class="primary" id="practice-reveal" hidden>显示释义</button>
-        <button type="button" class="secondary" id="practice-forgot" hidden>没记住</button>
-        <button type="button" class="primary" id="practice-knew" hidden>记得</button>
-        <button type="button" class="primary" id="practice-next" hidden>下一题</button>
-      </div>
-    </section>
-    <section id="practice-finish" class="practice-finish" hidden>
-      <p id="practice-result" role="status"></p>
-      <button type="button" class="primary" id="practice-restart">再练一轮</button>
-    </section>
-  </dialog>
+  </main>
   <script type="module" src="/src/app.js"></script>
 </body>
 </html>

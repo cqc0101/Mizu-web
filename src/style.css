@@ -42,7 +42,7 @@
 }
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { min-height: 100%; }
+html { min-height: 100%; scrollbar-gutter: stable; }
 body {
   margin: 0;
   min-height: 100vh;
@@ -200,10 +200,11 @@ dialog {
   max-width: calc(100% - 28px); box-shadow: 0 24px 85px #17291b32;
 }
 dialog::backdrop { background: #18271b52; backdrop-filter: blur(3px); }
+html:has(.settings-drawer[open]), body:has(.settings-drawer[open]) { overflow: hidden; }
 .settings-drawer {
   width: 410px; margin: 14px 14px 14px auto; inset: 0 0 0 auto; padding: 0;
   max-height: calc(100% - 28px); height: calc(100% - 28px);
-  border-radius: 23px; overflow: auto;
+  border-radius: 23px; overflow: auto; overscroll-behavior: contain;
 }
 .settings-drawer[open] { display: flex; flex-direction: column; animation: slide .21s cubic-bezier(.2,.75,.36,1) both; }
 @keyframes slide { from { opacity: 0; transform: translateX(18px); } }
@@ -286,39 +287,61 @@ textarea { resize: vertical; min-height: 70px; }
   border-top: 1px solid var(--line); padding-top: 13px; white-space: pre-line; overflow-wrap: anywhere;
   font: 400 clamp(1.1rem, 4vw, 1.32rem)/1.9 KaiTi, "Kaiti SC", "Songti SC", SimSun, serif;
 }
-.practice { width: 492px; }
-.practice .modal-heading { margin-bottom: 11px; }
-.practice-modes { margin: 0 0 18px; }
-.practice-books { border-bottom: 1px solid var(--line); margin-bottom: 15px; padding-bottom: 11px; }
-.practice-books summary { width: fit-content; cursor: pointer; color: var(--quiet); font-size: 14px; overflow-wrap: anywhere; }
-.practice-select-all, #practice-book-options label { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 31px; font-size: 14px; }
-#practice-book-options span { min-width: 0; overflow-wrap: anywhere; }
-.practice-select-all { margin: 12px 0 7px; }
-.practice-books input[type="checkbox"] { inline-size: 16px; block-size: 16px; accent-color: var(--accent); margin: 0; flex: 0 0 16px; padding: 0; }
-#practice-book-options {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
-  margin: 0 0 12px; padding: 0 2px; min-width: 0; max-height: 170px; overflow: auto; scrollbar-width: thin; border: 0;
+.practice { padding-bottom: 28px; }
+.practice-topbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-block: 10px; }
+.practice-topbar a { white-space: nowrap; padding-inline: 12px; }
+.practice-topbar a svg { width: 17px; height: 17px; }
+.practice-tabs { flex: 0 1 228px; margin: 0; }
+.practice-shell { width: min(100%, 940px); margin: clamp(16px, 5vh, 56px) auto 0; }
+.practice-shell h1 { margin: 0 0 15px 2px; font-size: clamp(1.6rem, 4vw, 2.25rem); font-weight: 625; letter-spacing: -.04em; }
+.practice-shell h1:focus { outline: none; }
+.practice-surface {
+  min-width: 0; padding: clamp(17px, 4vw, 38px);
+  border: 1px solid var(--line); border-radius: 23px; background: var(--card); box-shadow: 0 8px 32px var(--shadow);
 }
-#practice-apply-books { min-height: 35px; padding: 5px 12px; font-size: 14px; }
+.practice-modes { width: min(100%, 340px); margin: 0; }
+.practice-field { min-width: 0; margin: 0 0 23px; padding: 0; border: 0; }
+.practice-field legend { padding: 0; margin-bottom: 8px; font-size: 15px; font-weight: 600; }
+.practice-select-all, #practice-book-options label { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 36px; font-size: 14px; cursor: pointer; }
+#practice-book-options span { min-width: 0; overflow-wrap: anywhere; }
+.practice input[type="checkbox"] { inline-size: 16px; block-size: 16px; accent-color: var(--accent); margin: 0; flex: 0 0 16px; padding: 0; }
+#practice-book-options {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr)); gap: 6px;
+  margin: 4px 0 0; padding: 0 2px; max-height: 205px; overflow: auto; scrollbar-width: thin;
+}
+#practice-book-options label { padding: 5px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+#practice-book-options label:has(:checked) { background: var(--subtle); }
+.practice-limits { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 19px; font-size: 15px; }
+#practice-round-size {
+  padding: 8px; width: 92px; background: var(--surface); border: 1px solid var(--line); border-radius: 9px;
+  font-variant-numeric: tabular-nums;
+}
+#practice-round-size:disabled { opacity: .5; }
+.practice-question { min-height: clamp(340px, 58vh, 510px); }
 .practice-progress { display: flex; align-items: center; gap: 10px; color: var(--quiet); font-size: 13px; }
 .practice-progress progress { flex: 1; min-width: 0; height: 7px; accent-color: var(--accent); }
 .practice-progress span { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.practice .practice-word {
-  margin: 24px 0 21px; text-align: center; font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(1.65rem, 6vw, 2.45rem); font-weight: var(--word-weight); line-height: 1.2;
+#practice-end { margin-inline-start: auto; }
+.practice-word {
+  margin: clamp(32px, 9vh, 86px) 0 clamp(26px, 6vh, 56px); text-align: center; font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.1rem, 8vw, 4.2rem); font-weight: var(--word-weight); line-height: 1.12; overflow-wrap: anywhere;
 }
 .practice-word:focus { outline: none; }
-.practice-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.practice-option { min-height: 48px; padding: 8px 10px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.practice-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.practice-option { min-height: 54px; padding: 9px 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .practice-option:disabled { opacity: .68; }
 .practice-option[data-answer="correct"] { border-color: var(--accent); color: var(--accent); background: var(--subtle); opacity: 1; }
 .practice-option[data-answer="incorrect"] { border-color: var(--danger); color: var(--danger); opacity: 1; }
-.practice .practice-feedback { color: var(--text); text-align: center; white-space: pre-wrap; }
-.practice .practice-feedback:empty { display: none; }
-.practice .practice-empty { color: var(--quiet); }
-.practice-actions { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
-.practice-finish { text-align: center; padding-block: 10px 4px; }
-.practice-finish p { margin: 0 0 17px; font-size: 20px; font-weight: 600; }
+.practice-feedback { color: var(--text); text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 16px; }
+.practice-feedback:empty { display: none; }
+.practice-empty { color: var(--quiet); margin-top: 11px; }
+.practice-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
+.practice-finish { text-align: center; padding-block: 55px; }
+.practice-finish p { font-size: clamp(1.2rem, 4vw, 1.65rem); font-weight: 600; }
+.practice-mistakes-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.practice-mistakes-list { list-style: none; margin: 9px 0 0; padding: 0; }
+.practice-mistakes-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-block: 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.practice-mistakes-list p { color: var(--quiet); font-size: 14px; margin-top: 4px; }
 #cloud-form { padding-bottom: 14px; }
 #cloud-form .primary { width: 100%; margin-top: 16px; }
 #firebase-config { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
@@ -338,12 +361,12 @@ textarea { resize: vertical; min-height: 70px; }
 @media (max-width: 860px) {
   .wordbook-topbar { grid-template-columns: auto minmax(0, 1fr); }
   .wordbook-topbar .top-controls { grid-area: 1 / 2; justify-self: end; }
-  .wordbook-topbar .poem-strip { grid-column: 1 / -1; }
+  .wordbook-topbar .poem-strip { grid-column: 1 / -1; width: 100%; padding-inline-end: 0; }
 }
 @media (max-width: 620px) {
   .topbar { gap: 7px; padding-block: 7px; }
   .wordbook-topbar .top-controls { gap: 4px; }
-  .wordbook-topbar .poem-strip { padding-block: 3px; }
+  .wordbook-topbar .poem-strip { padding-block: 3px; text-align: right; }
   .poem-line { font-size: 16px; }
   .poem-credit { font-size: 12px; }
   .icon-button.practice-button { width: 40px; padding: 0; }
@@ -360,6 +383,7 @@ textarea { resize: vertical; min-height: 70px; }
   .cloud-pill { width: 40px; padding-inline: 0; border-radius: 11px; }
   #cloud-text { display: none; }
   .search { padding-inline: 8px; }
+  #practice-book-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .practice-options { grid-template-columns: 1fr; }
 }
 @media (max-width: 359px) {
