@@ -48,7 +48,7 @@ const savedDisplay = readJson(prefKey) ?? {};
 const display = {
   theme: Object.hasOwn(themes, savedDisplay.theme) ? savedDisplay.theme : "light",
   hideEnglish: savedDisplay.hideEnglish === true,
-  hideMeaning: savedDisplay.hideMeaning === true && savedDisplay.hideEnglish !== true,
+  hideMeaning: savedDisplay.hideMeaning === true,
   englishSize: bounded(savedDisplay.englishSize, 16, 38, 24),
   meaningSize: bounded(savedDisplay.meaningSize, 14, 34, 17),
   weight: bounded(savedDisplay.weight, 400, 700, 500),
@@ -115,9 +115,7 @@ function applyDisplay() {
   list.classList.toggle("hide-meaning", display.hideMeaning);
   byId("hide-english").checked = display.hideEnglish;
   byId("hide-meaning").checked = display.hideMeaning;
-  byId("hide-english").disabled = display.hideMeaning;
-  byId("hide-meaning").disabled = display.hideEnglish;
-  byId("visibility-note").hidden = !display.hideEnglish && !display.hideMeaning;
+  byId("visibility-note").hidden = !display.hideEnglish || !display.hideMeaning;
   for (const [id, value, unit] of [
     ["english-size", display.englishSize, " px"], ["meaning-size", display.meaningSize, " px"], ["word-weight", display.weight, ""]
   ]) {
@@ -134,10 +132,12 @@ function saveDisplay() {
 byId("hide-english").addEventListener("change", (event) => {
   display.hideEnglish = event.target.checked;
   saveDisplay();
+  render();
 });
 byId("hide-meaning").addEventListener("change", (event) => {
   display.hideMeaning = event.target.checked;
   saveDisplay();
+  render();
 });
 for (const [id, key] of [["english-size", "englishSize"], ["meaning-size", "meaningSize"], ["word-weight", "weight"]]) {
   byId(id).addEventListener("input", (event) => {
@@ -218,11 +218,12 @@ function wordRow(entry, example) {
 function render() {
   const terms = search.value.trim().toLowerCase();
   const words = currentWords();
-  const sampleAvailable = !cloud && !connecting && !localLoadError && getSaved(localKey) === null && !terms;
+  const allHidden = display.hideEnglish && display.hideMeaning;
+  const sampleAvailable = !allHidden && !cloud && !connecting && !localLoadError && getSaved(localKey) === null && !terms;
   const example = sampleAvailable && !display.hideExamples;
   sampleToggle.hidden = !sampleAvailable;
   sampleToggle.textContent = example ? "收起示例" : "查看示例";
-  const visible = (example ? samples : words).filter(
+  const visible = allHidden ? [] : (example ? samples : words).filter(
     (entry) => !terms || entry.Word.toLowerCase().includes(terms) || entry.Meaning.toLowerCase().includes(terms)
   );
   byId("word-count").textContent = cloud && !cloud.ready && words.length === 0 ? "云端单词本" : words.length + " 个词条";
@@ -230,8 +231,9 @@ function render() {
   byId("list-header").hidden = visible.length === 0;
   rows.replaceChildren(...visible.map((entry) => wordRow(entry, example)));
   byId("empty").hidden = visible.length > 0;
-  byId("empty-text").textContent = cloud && !cloud.ready ? (cloud.error ? "云端词条暂不可用" : "正在读取云端词条…")
-    : terms ? "未找到匹配的词条" : "单词本为空，可以添加第一条。";
+  byId("empty-text").textContent = allHidden ? "英文和中文均已隐藏，可在设置中恢复显示。"
+    : cloud && !cloud.ready ? (cloud.error ? "云端词条暂不可用" : "正在读取云端词条…")
+      : terms ? "未找到匹配的词条" : "单词本为空，可以添加第一条。";
   add.disabled = !canWrite() || words.length >= wordLimit;
   add.title = words.length >= wordLimit ? "已达到 500 条上限" : "";
   const syncLabel = cloud?.error ? "连接异常" : cloud?.ready ? "已同步" : cloud || connecting ? "正在连接" : "仅本机";
