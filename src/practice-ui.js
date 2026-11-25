@@ -187,7 +187,9 @@ export function setupPractice({ getBooks, activeId, readWords, loadWords }) {
       const input = document.createElement("input");
       input.type = "checkbox";
       input.value = book.id;
-      label.append(input, book.name);
+      const name = document.createElement("span");
+      name.textContent = book.name;
+      label.append(input, name);
       return label;
     }));
     rounds.clear();

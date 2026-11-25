@@ -4,6 +4,10 @@
 
 在列表上方切换词本。在「设置 → 词本」管理哪些词本出现在列表里，也可新建自定义词本。个人和自建词本支持增删改。五套备考词本可浏览、搜索和练习。
 
+点放大镜展开搜索。在「设置 → 显示 → 翻页方式」可选按钮翻页、左右滑动或下滚加载。左右滑动支持触屏和横向触控板手势。每批载入最多 50 个词，并保留上一页与下一页按钮。
+
+顶部每日诗词随本地日期轮换，点击可阅读整首。网页与桌面版内置离线诗库使用同一组选句。右上角的游戏入口可打开数字华容道、舒尔特方块、数独和反应力测试。数字华容道由合法移动打乱，数独题目生成时校验唯一解。
+
 右上角的练习按钮支持勾选一本、多本或全部词本，从带中文释义的词条中随机抽取最多 10 个词。可以翻卡自测，或用至少四种不同的释义练习四选一。网页记住上次选择的练习方式及词本。
 
 ## 内置词本覆盖范围
@@ -56,7 +60,7 @@ npm run build
 2. 直接拖入生成的 `Mizu-Web-Cloudflare-Pages.zip`，再点击部署。ZIP 根目录就是可发布静态文件。
 3. 打开分配的 `pages.dev` 地址，通过右上角云朵登录自己的 Firebase。如果网页 API Key 设置了网站限制，请允许该页面的实际域名。
 
-可以用 `npm run build` 和 `python scripts/package-cloudflare.py` 重新生成上传 ZIP。Cloudflare Pages 按协商压缩静态资源，包内 `_headers` 对哈希命名的脚本、样式和词包设置长缓存，并让浏览器重新验证 HTML。首次打开个人词本不会下载公共词包，选中哪本就载入哪本。列表逐页渲染，每页最多 50 条。
+可以用 `npm run build` 和 `python scripts/package-cloudflare.py` 重新生成上传 ZIP。Cloudflare Pages 按协商压缩静态资源，包内 `_headers` 对哈希命名的脚本、样式和词包设置长缓存，并让浏览器重新验证 HTML。首次打开个人词本不会下载公共词包，选中哪本就载入哪本。游戏页面在打开时单独加载。
 
 [Cloudflare Pages 直接上传](https://developers.cloudflare.com/pages/get-started/direct-upload/) · [静态资源压缩与缓存](https://developers.cloudflare.com/pages/configuration/serving-pages/) · [响应头文档](https://developers.cloudflare.com/pages/configuration/headers/)
 

@@ -67,6 +67,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center; gap: 10px; padding: 8px 0;
 }
+.wordbook-topbar { position: relative; z-index: 4; }
 .brand { display: grid; place-items: center; width: 37px; height: 37px; }
 .brand img { display: block; }
 .brand-mark {
@@ -80,7 +81,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   min-height: 40px; border: 1px solid transparent; border-radius: 11px;
   padding: 9px 14px; text-decoration: none; transition: background .16s ease, border-color .16s ease, color .16s ease;
 }
-.cloud-pill, .settings-button, .icon-button.practice-button { background: var(--surface); border-color: var(--line); }
+.cloud-pill, .settings-button, .icon-button.practice-button, .icon-button.toolbar-button { background: var(--surface); border-color: var(--line); }
+.toolbar-button { color: var(--text); }
+#settings-button svg { width: 21px; height: 21px; stroke-width: 1.5; }
+#search-button[aria-expanded="true"], #search-button[data-filtered="true"] { color: var(--accent); border-color: var(--accent); }
 .cloud-pill { color: var(--quiet); font-size: 14px; border-radius: 20px; }
 .cloud-pill[data-online="true"] { color: var(--accent); }
 .cloud-pill svg { width: 17px; height: 17px; }
@@ -98,7 +102,21 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .danger { background: var(--danger); color: var(--card); font-weight: 600; }
 .workspace { display: flex; flex-direction: column; flex: 1; padding-bottom: 8px; }
 h2, p { margin: 0; }
-.notebook { flex: 1; background: var(--card); background: color-mix(in srgb, var(--card) 97%, transparent); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px var(--shadow); }
+.notebook { flex: 1; background: var(--card); background: color-mix(in srgb, var(--card) 97%, transparent); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 32px var(--shadow); }
+.poem-strip {
+  display: flex; align-items: baseline; justify-self: stretch; gap: 11px; min-width: 0;
+  border: 0; border-radius: 9px; padding: 7px 8px; text-align: left; background: transparent;
+}
+.poem-strip:hover { background: var(--subtle); }
+.poem-line, .poem-credit { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poem-line { flex: 0 1 auto; font-family: KaiTi, "Kaiti SC", "Songti SC", SimSun, serif; font-size: 18px; }
+.poem-credit { flex: 0 2 auto; font-size: 13px; color: var(--quiet); }
+.search-panel {
+  position: absolute; top: calc(100% + 3px); right: 0; z-index: 5; width: min(360px, 100%);
+  display: flex; align-items: center; gap: 4px; padding: 5px; border: 1px solid var(--line);
+  border-radius: 13px; background: var(--card); box-shadow: 0 8px 24px var(--shadow);
+}
+.search-panel .search { flex: 1; }
 .search {
   display: flex; align-items: center; gap: 8px; width: min(100%, 340px);
   min-width: 0; background: var(--subtle); color: var(--quiet); border: 1px solid transparent;
@@ -109,6 +127,9 @@ h2, p { margin: 0; }
 .search input { border: 0; background: transparent; outline: 0; min-width: 0; width: 100%; min-height: 36px; font-size: 1rem; color: var(--text); }
 input::placeholder, textarea::placeholder { color: var(--quiet); opacity: 1; }
 .word-list { --actions-width: 74px; }
+.word-list[data-page-mode="swipe"] { touch-action: pan-y pinch-zoom; }
+.word-list[data-page-mode="scroll"] .word-row { content-visibility: auto; contain-intrinsic-size: auto 54px; scroll-margin-top: 48px; }
+#scroll-sentinel { height: 1px; }
 .word-grid { display: grid; grid-template-columns: minmax(0, .94fr) minmax(0, 1.06fr) var(--actions-width); align-items: center; column-gap: 18px; }
 .word-list.hide-english .english-col, .word-list.hide-meaning .meaning-col { display: none; }
 .word-list.hide-english .word-grid, .word-list.hide-meaning .word-grid { grid-template-columns: minmax(0, 1fr) var(--actions-width); }
@@ -116,30 +137,48 @@ input::placeholder, textarea::placeholder { color: var(--quiet); opacity: 1; }
 .word-list.read-only:is(.hide-english, .hide-meaning) .word-grid { grid-template-columns: minmax(0, 1fr); }
 .bookbar {
   display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 4px 15px;
-  background: var(--surface); border-bottom: 1px solid var(--line); color: var(--quiet);
+  position: relative; z-index: 2; background: var(--surface); border-bottom: 1px solid var(--line);
+  border-radius: 15px 15px 0 0; color: var(--quiet);
 }
+.notebook[data-page-mode="scroll"] .bookbar { position: sticky; top: 0; }
 .book-select { position: relative; display: inline-grid; margin-right: auto; min-width: 0; max-width: 53%; }
-.book-select select {
-  appearance: none; width: 100%; min-width: 0; color: var(--text); border: 1px solid var(--line);
-  background: var(--card); border-radius: 8px; padding: 5px 29px 5px 9px;
-  text-overflow: ellipsis; font: 550 14px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif;
+#book-select {
+  display: flex; align-items: center; justify-content: space-between; min-width: 0; gap: 7px;
+  color: var(--text); border: 1px solid var(--line); background: var(--card);
+  border-radius: 9px; padding: 6px 8px 6px 10px; font-size: 14px; font-weight: 600;
 }
-.book-select svg { position: absolute; width: 16px; height: 16px; right: 7px; top: 50%; translate: 0 -50%; pointer-events: none; }
+#book-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#book-select svg, .book-option svg { width: 16px; height: 16px; }
+#book-select[aria-expanded="true"] svg { rotate: 180deg; }
+.book-menu {
+  position: absolute; z-index: 3; top: calc(100% + 7px); left: 0; width: min(230px, calc(100vw - 48px));
+  max-height: min(330px, 55vh); padding: 5px; overflow-y: auto; scrollbar-width: thin;
+  background: var(--card); border: 1px solid var(--line); border-radius: 13px; box-shadow: 0 9px 26px var(--shadow);
+}
+.book-option {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 36px; border: 0; border-radius: 8px; background: transparent; text-align: left;
+  padding: 5px 9px; overflow-wrap: anywhere; font-size: 14px;
+}
+.book-option[aria-checked="true"], .book-option:hover, .book-option:focus-visible { background: var(--subtle); color: var(--accent); }
+.book-option:focus-visible { outline-offset: -2px; }
+.book-option svg { visibility: hidden; }
+.book-option[aria-checked="true"] svg { visibility: visible; }
 .list-context { font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pagination { display: inline-flex; align-items: center; gap: 1px; }
 .pagination .text-button { min-height: 31px; padding: 4px 6px; font-size: 13px; }
 .word-list ul { list-style: none; padding: 0; margin: 0; }
 .word-row {
-  padding: 8px 19px; min-height: 52px; border-bottom: 1px solid var(--line);
+  position: relative; padding: 9px 19px; min-height: 54px;
   overflow-wrap: anywhere; transition: background .16s ease;
 }
-.word-row:last-child { border-bottom: 0; }
+.word-row:not(:last-child)::after { content: ""; position: absolute; inset: auto 19px 0; height: 1px; background: var(--line); pointer-events: none; }
 .word-row:hover, .word-row:focus-within { background: var(--surface); }
 .word-row .english-col {
   font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
   font-size: var(--english-size); font-weight: var(--word-weight); letter-spacing: -.022em; line-height: 1.25;
 }
-.word-row .meaning-col { font-size: var(--meaning-size); font-weight: var(--word-weight); line-height: 1.45; white-space: pre-wrap; }
+.word-row .meaning-col { font-size: var(--meaning-size); font-weight: var(--word-weight); line-height: 1.5; white-space: pre-wrap; color: var(--quiet); }
 .word-row .muted { color: var(--quiet); }
 .row-actions { display: flex; align-items: center; gap: 2px; color: var(--quiet); }
 .row-actions .icon-button { width: 36px; min-height: 36px; }
@@ -226,11 +265,13 @@ h2 { font-weight: 625; font-size: 23px; letter-spacing: -.045em; }
 .range-row { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin: 15px 0 0; font-size: 14px; }
 .range-row output { color: var(--quiet); font-variant-numeric: tabular-nums; }
 .range-row input { grid-column: span 2; margin: 1px 0 0; accent-color: var(--accent); }
+.page-modes label { display: flex; align-items: center; gap: 8px; padding-block: 5px; font-size: 14px; }
+.page-modes input { inline-size: 16px; block-size: 16px; margin: 0; accent-color: var(--accent); }
 .modal { width: 454px; padding: 21px 24px 23px; border-radius: 20px; }
 .modal-heading { margin: 0 0 7px; }
 .modal p { margin-top: 12px; line-height: 1.65; overflow-wrap: anywhere; }
 .modal form > label, #cloud-form > label { display: block; margin: 12px 0 6px; font-size: 14px; font-weight: 550; }
-.modal input, textarea, #cloud-form input {
+#word, textarea, #cloud-form input {
   background: var(--surface); border: 1px solid var(--line); padding: 10px 11px;
   width: 100%; border-radius: 9px; font-size: 1rem;
 }
@@ -238,17 +279,24 @@ textarea { resize: vertical; min-height: 70px; }
 .modal-actions { display: flex; gap: 8px; align-items: center; margin: 18px 0 0; }
 .spacer { flex: 1 1 auto; }
 .feedback { color: var(--danger); font-size: 14px; }
+.poem-dialog { width: 540px; }
+.poem-dialog #poem-author { color: var(--quiet); margin: 0 0 15px; font-size: 14px; }
+#poem-full {
+  border-top: 1px solid var(--line); padding-top: 13px; white-space: pre-line; overflow-wrap: anywhere;
+  font: 400 clamp(1.1rem, 4vw, 1.32rem)/1.9 KaiTi, "Kaiti SC", "Songti SC", SimSun, serif;
+}
 .practice { width: 492px; }
 .practice .modal-heading { margin-bottom: 11px; }
 .practice-modes { margin: 0 0 18px; }
 .practice-books { border-bottom: 1px solid var(--line); margin-bottom: 15px; padding-bottom: 11px; }
 .practice-books summary { width: fit-content; cursor: pointer; color: var(--quiet); font-size: 14px; overflow-wrap: anywhere; }
-.practice-select-all, #practice-book-options label { display: flex; align-items: center; gap: 6px; font-size: 14px; overflow-wrap: anywhere; }
+.practice-select-all, #practice-book-options label { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 31px; font-size: 14px; }
+#practice-book-options span { min-width: 0; overflow-wrap: anywhere; }
 .practice-select-all { margin: 12px 0 7px; }
-.practice-books input { accent-color: var(--accent); margin: 0; flex: none; }
+.practice-books input[type="checkbox"] { inline-size: 16px; block-size: 16px; accent-color: var(--accent); margin: 0; flex: 0 0 16px; padding: 0; }
 #practice-book-options {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
-  margin: 0 0 12px; padding: 0; min-width: 0; max-height: 170px; overflow-y: auto; border: 0;
+  margin: 0 0 12px; padding: 0 2px; min-width: 0; max-height: 170px; overflow: auto; scrollbar-width: thin; border: 0;
 }
 #practice-apply-books { min-height: 35px; padding: 5px 12px; font-size: 14px; }
 .practice-progress { display: flex; align-items: center; gap: 10px; color: var(--quiet); font-size: 13px; }
@@ -288,11 +336,17 @@ textarea { resize: vertical; min-height: 70px; }
 .help li { margin-bottom: 7px; }
 @media (max-width: 620px) {
   .topbar { gap: 7px; padding-block: 7px; }
+  .wordbook-topbar { grid-template-columns: auto minmax(0, 1fr); }
+  .wordbook-topbar .top-controls { grid-area: 1 / 2; justify-self: end; gap: 4px; }
+  .wordbook-topbar .poem-strip { grid-column: 1 / -1; gap: 6px; padding-block: 4px; }
+  .poem-line { font-size: 16px; }
+  .poem-credit { font-size: 12px; }
   .icon-button.practice-button { width: 40px; padding: 0; }
   .practice-button span { display: none; }
   .notebook { border-radius: 12px; }
   .word-list { --actions-width: 64px; }
   .bookbar, .word-row { padding-inline: 10px; column-gap: 7px; }
+  .word-row:not(:last-child)::after { inset-inline: 10px; }
   .row-actions { gap: 0; }
   .row-actions .icon-button { width: 32px; min-height: 36px; }
   #list-context { white-space: nowrap; }
@@ -302,6 +356,9 @@ textarea { resize: vertical; min-height: 70px; }
   #cloud-text { display: none; }
   .search { padding-inline: 8px; }
   .practice-options { grid-template-columns: 1fr; }
+}
+@media (max-width: 359px) {
+  .wordbook-topbar .top-controls > :is(.toolbar-button, .practice-button, .settings-button, .cloud-pill, #add-word) { width: 35px; min-height: 36px; }
 }
 @media (hover: hover) and (pointer: fine) {
   .row-actions { opacity: 0; transition: opacity .16s ease; }

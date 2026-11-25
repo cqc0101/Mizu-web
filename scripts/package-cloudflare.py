@@ -6,7 +6,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 root = Path(__file__).resolve().parents[1]
 dist = root / "dist"
 output = Path(argv[1]).resolve() if len(argv) == 2 else root / "artifacts/Mizu-Web-Cloudflare-Pages.zip"
-for required in ("index.html", "_headers", "firestore.rules", "wordpacks/LICENSE-ECDICT.txt"):
+for required in ("index.html", "games.html", "_headers", "firestore.rules", "wordpacks/LICENSE-ECDICT.txt"):
     if not (dist / required).is_file():
         raise SystemExit(f"Missing {required}. Run npm run build first.")
 files = [file for file in sorted(dist.rglob("*")) if file.is_file()]

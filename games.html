@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Mizu 的数字华容道、舒尔特方块、数独和反应力测试。">
+  <link rel="icon" type="image/png" href="/mizu.png">
+  <title>Mizu · 游戏</title>
+</head>
+<body>
+  <header class="topbar game-topbar">
+    <a href="./" class="brand" aria-label="Mizu 单词本"><img src="/mizu.png" width="32" height="32" alt=""></a>
+    <a href="./" class="secondary game-back">返回单词本</a>
+  </header>
+  <main class="workspace games">
+    <nav class="game-tabs" aria-label="选择游戏">
+      <button type="button" data-game="slide" aria-pressed="true">数字华容道</button>
+      <button type="button" data-game="schulte" aria-pressed="false">舒尔特方块</button>
+      <button type="button" data-game="sudoku" aria-pressed="false">数独</button>
+      <button type="button" data-game="reaction" aria-pressed="false">反应力测试</button>
+    </nav>
+    <section class="game-card" aria-labelledby="game-title">
+      <div class="game-heading">
+        <h1 id="game-title"></h1>
+        <div id="game-actions" class="game-actions"></div>
+      </div>
+      <p id="game-note" class="game-note"></p>
+      <div id="game-stage" class="game-stage"></div>
+      <p id="game-status" class="game-status" role="status"></p>
+    </section>
+  </main>
+  <script type="module" src="/src/games-ui.js"></script>
+</body>
+</html>

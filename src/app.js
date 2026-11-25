@@ -3,6 +3,8 @@ import { changeWords, parseFirebaseConfig, readWords, wordLimit } from "./words.
 import { setupPractice } from "./practice-ui.js";
 import { changeBooks, encodeBooks, personalBook, readBooks } from "./books.js";
 import { examBooks, getExamWords, loadExamWords } from "./wordpacks.js";
+import { setupBookMenu } from "./book-menu.js";
+import { setupPoetry } from "./poetry.js";
 
 const byId = (id) => document.getElementById(id);
 const prefKey = "mizu-web:display";
@@ -60,7 +62,8 @@ const display = {
   hideMeaning: savedDisplay.hideMeaning === true,
   englishSize: bounded(savedDisplay.englishSize, 16, 38, 24),
   meaningSize: bounded(savedDisplay.meaningSize, 14, 34, 17),
-  weight: bounded(savedDisplay.weight, 400, 700, 500)
+  weight: bounded(savedDisplay.weight, 400, 700, 500),
+  pageMode: ["buttons", "swipe", "scroll"].includes(savedDisplay.pageMode) ? savedDisplay.pageMode : "buttons"
 };
 
 const settings = byId("settings");
@@ -78,10 +81,22 @@ let localBooks = loadLocalBooks();
 const bookDisplay = readJson(bookDisplayKey) ?? {};
 let chosenBookId = typeof bookDisplay.active === "string" ? bookDisplay.active : personalBook.id;
 const hiddenBooks = new Set(Array.isArray(bookDisplay.hidden) ? bookDisplay.hidden.filter((id) => typeof id === "string") : []);
-const bookSelect = byId("book-select");
+const bookMenu = setupBookMenu((id) => {
+  chosenBookId = id;
+  resetPagination();
+  search.value = "";
+  saveBookDisplay();
+  render();
+});
 const bookVisibility = byId("book-visibility");
 let renderedBooks = "";
 let pageIndex = 0;
+let loadedPages = 1;
+let matchingCount = 0;
+let drawnRows;
+const sentinel = byId("scroll-sentinel");
+const notebook = list.closest(".notebook");
+const pageModes = [...document.querySelectorAll('input[name="page-mode"]')];
 const examRequests = new Map();
 let connection;
 let selectedConfig;
@@ -129,6 +144,8 @@ function applyDisplay() {
   }
   list.classList.toggle("hide-english", display.hideEnglish);
   list.classList.toggle("hide-meaning", display.hideMeaning);
+  list.dataset.pageMode = notebook.dataset.pageMode = display.pageMode;
+  for (const input of pageModes) input.checked = input.value === display.pageMode;
   byId("hide-english").checked = display.hideEnglish;
   byId("hide-meaning").checked = display.hideMeaning;
   byId("visibility-note").hidden = !display.hideEnglish || !display.hideMeaning;
@@ -161,6 +178,13 @@ for (const [id, key] of [["english-size", "englishSize"], ["meaning-size", "mean
     saveDisplay();
   });
 }
+for (const input of pageModes) input.addEventListener("change", () => {
+  if (!input.checked) return;
+  display.pageMode = input.value;
+  resetPagination();
+  saveDisplay();
+  render();
+});
 
 function feedback(id, message = "") {
   const target = byId(id);
@@ -226,10 +250,6 @@ function renderBookControls(active) {
   if (renderedBooks !== signature) {
     renderedBooks = signature;
     const focusedId = document.activeElement?.dataset.bookId;
-    const visible = all.filter(({ id }) => !hiddenBooks.has(id));
-    bookSelect.replaceChildren(...visible.map(({ id, name }) => new Option(name, id)));
-    if (visible.length === 0) bookSelect.append(new Option("无可见词本", ""));
-    bookSelect.disabled = visible.length === 0;
     bookVisibility.replaceChildren(...all.map((book) => {
       const label = document.createElement("label");
       label.className = "setting-row book-visibility-row";
@@ -251,7 +271,7 @@ function renderBookControls(active) {
     }));
     if (focusedId) [...bookVisibility.querySelectorAll("input")].find((input) => input.dataset.bookId === focusedId)?.focus();
   }
-  bookSelect.value = active?.id ?? "";
+  bookMenu.update(all.filter(({ id }) => !hiddenBooks.has(id)), active);
   byId("create-book").disabled = !canWriteCustom();
   feedback("books-sync-message", cloud?.booksError?.code === "permission-denied"
     ? "让自建词本参与云端同步，请发布新版 Firestore 安全规则，再重新登录。"
@@ -298,6 +318,7 @@ function wordRow(entry, book) {
 
 function render() {
   const terms = search.value.trim().toLowerCase();
+  byId("search-button").dataset.filtered = String(!!terms);
   const book = activeBook();
   loadSelectedExam(book);
   renderBookControls(book);
@@ -311,17 +332,28 @@ function render() {
   const matches = allHidden ? [] : terms ? words.filter((entry) =>
     entry.Word.toLowerCase().includes(terms) || entry.Meaning.toLowerCase().includes(terms)) : words;
   const pages = Math.max(1, Math.ceil(matches.length / pageSize));
+  matchingCount = matches.length;
+  const infinite = display.pageMode === "scroll";
   pageIndex = Math.min(pageIndex, pages - 1);
-  const start = pageIndex * pageSize;
-  const visible = matches.slice(start, start + pageSize);
+  loadedPages = Math.min(loadedPages, pages);
+  const start = infinite ? 0 : pageIndex * pageSize;
+  const end = infinite ? Math.min(matches.length, loadedPages * pageSize) : Math.min(matches.length, start + pageSize);
+  const write = canWrite(book);
+  const key = [book?.id, terms, infinite, allHidden, write, start].join("|");
+  if (drawnRows?.key === key && drawnRows.words === words && drawnRows.end <= end) {
+    rows.append(...matches.slice(drawnRows.end, end).map((entry) => wordRow(entry, book)));
+  } else {
+    rows.replaceChildren(...matches.slice(start, end).map((entry) => wordRow(entry, book)));
+  }
+  drawnRows = { key, words, end };
+  sentinel.hidden = !infinite || end >= matches.length;
+  const visibleCount = end - start;
   byId("list-context").textContent = !book || waiting || allHidden ? "" : pages > 1
-    ? (start + 1) + "–" + (start + visible.length) + " / " + matches.length
+    ? (infinite ? end + " / " + matches.length : (start + 1) + "–" + end + " / " + matches.length)
     : matches.length + (terms ? " 条结果" : " 个词条");
   byId("pagination").hidden = pages <= 1;
-  byId("prev-page").disabled = pageIndex === 0;
-  byId("next-page").disabled = pageIndex + 1 >= pages;
-  rows.replaceChildren(...visible.map((entry) => wordRow(entry, book)));
-  byId("empty").hidden = visible.length > 0;
+  updatePageButtons();
+  byId("empty").hidden = visibleCount > 0;
   byId("retry-book").hidden = !packRequest?.error;
   byId("empty-text").textContent = !book ? "在设置的「词本」中选择要显示的词本。"
     : allHidden ? "英文和中文均已隐藏，可在设置中恢复显示。"
@@ -366,25 +398,113 @@ byId("cloud-button").addEventListener("click", () => openSettings("cloud"));
 byId("display-tab").addEventListener("click", () => openSettings("display"));
 byId("books-tab").addEventListener("click", () => openSettings("books"));
 byId("cloud-tab").addEventListener("click", () => openSettings("cloud"));
-search.addEventListener("input", () => { pageIndex = 0; render(); });
-bookSelect.addEventListener("change", () => {
-  chosenBookId = bookSelect.value;
-  pageIndex = 0;
+const searchTrigger = byId("search-button");
+const searchPanel = byId("search-panel");
+function toggleSearch(open, restoreFocus = false) {
+  searchPanel.hidden = !open;
+  searchTrigger.setAttribute("aria-expanded", String(open));
+  if (open) { search.focus(); search.select(); }
+  else if (restoreFocus) searchTrigger.focus();
+}
+searchTrigger.addEventListener("click", () => toggleSearch(searchPanel.hidden));
+search.addEventListener("input", () => { resetPagination(); render(); });
+searchPanel.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") { event.preventDefault(); toggleSearch(false, true); }
+  else if (event.key === "Enter" && event.target === search) { event.preventDefault(); toggleSearch(false, true); }
+});
+byId("clear-search").addEventListener("click", () => {
   search.value = "";
-  saveBookDisplay();
+  resetPagination();
   render();
+  toggleSearch(false, true);
+});
+document.addEventListener("pointerdown", (event) => {
+  if (!searchPanel.hidden && !searchPanel.contains(event.target) && !searchTrigger.contains(event.target)) toggleSearch(false);
 });
 bookVisibility.addEventListener("change", (event) => {
   const id = event.target.dataset.bookId;
   if (!id) return;
   if (event.target.checked) hiddenBooks.delete(id);
   else hiddenBooks.add(id);
-  pageIndex = 0;
+  resetPagination();
   saveBookDisplay();
   render();
 });
-byId("prev-page").addEventListener("click", () => { pageIndex = Math.max(0, pageIndex - 1); render(); });
-byId("next-page").addEventListener("click", () => { pageIndex++; render(); });
+function resetPagination() { pageIndex = 0; loadedPages = 1; }
+
+function scrollPageIndex() {
+  const top = notebook.querySelector(".bookbar").getBoundingClientRect().bottom + 8;
+  let first = 0;
+  let end = rows.children.length;
+  while (first < end) {
+    const middle = (first + end) >>> 1;
+    if (rows.children[middle].getBoundingClientRect().bottom < top) first = middle + 1;
+    else end = middle;
+  }
+  return Math.floor(Math.min(first, Math.max(0, rows.children.length - 1)) / pageSize);
+}
+
+function updatePageButtons() {
+  const position = display.pageMode === "scroll" ? scrollPageIndex() : pageIndex;
+  byId("prev-page").disabled = position === 0;
+  byId("next-page").disabled = (position + 1) * pageSize >= matchingCount;
+}
+
+function turnPage(delta) {
+  const last = Math.max(0, Math.ceil(matchingCount / pageSize) - 1);
+  const current = display.pageMode === "scroll" ? scrollPageIndex() : pageIndex;
+  const target = Math.max(0, Math.min(last, current + delta));
+  if (target === current) return;
+  if (display.pageMode === "scroll") {
+    if (loadedPages < target + 1) { loadedPages = target + 1; render(); }
+    rows.children[target * pageSize]?.scrollIntoView({ block: "start" });
+    updatePageButtons();
+  } else {
+    pageIndex = target;
+    render();
+    if (notebook.getBoundingClientRect().top < 0) notebook.scrollIntoView({ block: "start" });
+  }
+}
+
+byId("prev-page").addEventListener("click", () => turnPage(-1));
+byId("next-page").addEventListener("click", () => turnPage(1));
+const moreRows = new IntersectionObserver((entries) => {
+  if (!sentinel.hidden && entries.some((entry) => entry.isIntersecting)) { loadedPages++; render(); }
+}, { rootMargin: "280px 0px" });
+moreRows.observe(sentinel);
+let pendingPageUpdate = false;
+window.addEventListener("scroll", () => {
+  if (display.pageMode !== "scroll" || pendingPageUpdate) return;
+  pendingPageUpdate = true;
+  requestAnimationFrame(() => { pendingPageUpdate = false; updatePageButtons(); });
+}, { passive: true });
+let touch;
+list.addEventListener("pointerdown", (event) => {
+  if (display.pageMode !== "swipe" || event.pointerType === "mouse" || !event.isPrimary) return;
+  touch = { id: event.pointerId, x: event.clientX, y: event.clientY };
+});
+list.addEventListener("pointercancel", () => { touch = null; });
+list.addEventListener("pointerup", (event) => {
+  if (touch?.id !== event.pointerId) return;
+  const dx = event.clientX - touch.x;
+  const dy = event.clientY - touch.y;
+  touch = null;
+  if (display.pageMode === "swipe" && Math.abs(dx) >= 55 && Math.abs(dx) > Math.abs(dy) * 1.4) turnPage(dx < 0 ? 1 : -1);
+});
+let wheelOffset = 0, wheelAt = 0, wheelTurn = -Infinity;
+list.addEventListener("wheel", (event) => {
+  if (display.pageMode !== "swipe" || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+  event.preventDefault();
+  const now = performance.now();
+  if (now - wheelAt > 160) wheelOffset = 0;
+  wheelAt = now;
+  if (now - wheelTurn < 360) return;
+  wheelOffset += event.deltaX * (event.deltaMode === 0 ? 1 : 24);
+  if (Math.abs(wheelOffset) < 55) return;
+  turnPage(wheelOffset > 0 ? 1 : -1);
+  wheelTurn = now;
+  wheelOffset = 0;
+}, { passive: false });
 byId("retry-book").addEventListener("click", () => {
   examRequests.delete(activeBook()?.id);
   render();
@@ -463,6 +583,7 @@ async function finishEdit(change, draft, dialog, button, errorId, success) {
     if (change.type === "add") {
       search.value = "";
       pageIndex = Math.floor((bookWords(activeBook())?.length ?? 0) / pageSize);
+      if (display.pageMode === "scroll") loadedPages = Math.max(loadedPages, pageIndex + 1);
     }
     notify(success);
   } catch (error) {
@@ -488,7 +609,7 @@ byId("create-book-form").addEventListener("submit", async (event) => {
   try {
     await storeBooksChange(change, target);
     chosenBookId = change.id;
-    pageIndex = 0;
+    resetPagination();
     search.value = "";
     saveBookDisplay();
     input.value = "";
@@ -621,6 +742,7 @@ window.addEventListener("storage", (event) => {
 });
 
 applyDisplay();
+setupPoetry();
 setupPractice({
   getBooks: books, activeId: () => activeBook()?.id,
   readWords: bookWords, loadWords: (book) => book.kind === "exam" ? loadExamWords(book) : bookWords(book)
