@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#edf1e9">
+  <meta name="description" content="Mizu 网页单词本，记录英文与释义，支持连接自己的 Firebase。">
+  <title>Mizu · 单词本</title>
+</head>
+<body>
+  <svg class="icons" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="icon-book" viewBox="0 0 24 24"><path d="M12 6.5c-2.4-2.1-6.1-2.7-9-1.4v14c3-1.3 6.6-.8 9 1.3 2.4-2.1 6-2.6 9-1.3v-14c-2.9-1.3-6.6-.7-9 1.4V20"/><path d="M6 9c1.4-.2 2.6 0 3.5.5M15 9.5c.9-.5 2.1-.7 3.5-.5"/></symbol>
+    <symbol id="icon-cloud" viewBox="0 0 24 24"><path d="M7 17.5h10a4 4 0 1 0-.5-8 5.6 5.6 0 0 0-10.8 1.2A3.5 3.5 0 0 0 7 17.5Z"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M10 3h4l.6 2.3 2 .9 2-.9 2.8 2.8-.9 2 .9 2 .6.2v3.7l-2.3.6-.9 2 .9 2-2.8 2.8-2-.9-2 .9-.6 2.3h-4l-.6-2.3-2-.9-2 .9-2.8-2.8.9-2-.9-2L2 16v-4l2.3-.6.9-2-.9-2 2.8-2.8 2 .9 2-.9Z" transform="translate(1 0) scale(.9167 .84)"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.3 15.3 4.7 4.7"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="icon-pencil" viewBox="0 0 24 24"><path d="m14.5 5.5 4 4M4 20l4.4-.9L20 7.5a2.8 2.8 0 0 0-4-4L4.9 15.1 4 20Z"/></symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 3v7m4-7v7"/></symbol>
+  </svg>
+  <header class="topbar">
+    <a href="./" class="brand" aria-label="Mizu 单词本首页">
+      <span class="brand-mark"><svg><use href="#icon-book"/></svg></span>
+      <span>Mizu<span class="brand-period">.</span></span>
+    </a>
+    <div class="top-controls">
+      <button type="button" class="cloud-pill" id="cloud-button" aria-label="Firebase 同步设置">
+        <svg><use href="#icon-cloud"/></svg><span id="cloud-text">仅本机</span>
+      </button>
+      <button type="button" class="icon-button settings-button" id="settings-button" aria-label="设置" title="设置">
+        <svg><use href="#icon-settings"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <div class="heading">
+      <div><h1>单词本</h1><p id="word-count" class="word-count"></p></div>
+      <button type="button" class="primary" id="add-word"><svg><use href="#icon-plus"/></svg>添加单词</button>
+    </div>
+    <section class="notebook" aria-label="词条列表">
+      <div class="notebook-tools">
+        <label class="search">
+          <svg><use href="#icon-search"/></svg>
+          <input id="search" type="search" placeholder="搜索单词或释义" aria-label="搜索单词或释义" autocomplete="off">
+        </label>
+        <button type="button" class="text-button" id="sample-toggle" hidden>收起示例</button>
+      </div>
+      <div id="sync-problem" class="inline-alert" hidden></div>
+      <div id="word-list" class="word-list" aria-live="off">
+        <div id="list-header" class="list-header word-grid">
+          <span class="english-col">英文</span><span class="meaning-col">中文释义</span>
+          <span id="list-context"></span>
+        </div>
+        <ul id="rows"></ul>
+        <div id="empty" class="empty" hidden>
+          <span class="empty-mark"><svg><use href="#icon-book"/></svg></span>
+          <p id="empty-text"></p>
+        </div>
+      </div>
+    </section>
+    <p id="notice" class="notice" role="status"></p>
+  </main>
+
+  <dialog id="settings" class="settings-drawer" aria-labelledby="settings-title">
+    <div class="drawer-heading">
+      <h2 id="settings-title">设置</h2>
+      <button type="button" class="icon-button" data-close="settings" aria-label="关闭设置">
+        <svg><use href="#icon-close"/></svg>
+      </button>
+    </div>
+    <div class="settings-tabs" aria-label="设置分类">
+      <button type="button" id="display-tab" aria-pressed="true" aria-controls="display-panel">显示</button>
+      <button type="button" id="cloud-tab" aria-pressed="false" aria-controls="cloud-panel">Firebase</button>
+    </div>
+    <div class="drawer-content">
+      <section id="display-panel">
+        <fieldset class="setting-group">
+          <legend>主题</legend>
+          <div id="themes" class="theme-options"></div>
+        </fieldset>
+        <fieldset class="setting-group">
+          <legend>词条显示</legend>
+          <label class="setting-row">隐藏英文<input id="hide-english" type="checkbox" role="switch" class="toggle"></label>
+          <label class="setting-row">隐藏中文<input id="hide-meaning" type="checkbox" role="switch" class="toggle"></label>
+          <p class="settings-note" id="visibility-note" hidden>至少保留一列，方便辨认词条。</p>
+          <label class="range-row" for="english-size">英文字号<output id="english-size-value" for="english-size"></output>
+            <input id="english-size" type="range" min="16" max="38" step="1">
+          </label>
+          <label class="range-row" for="meaning-size">中文字号<output id="meaning-size-value" for="meaning-size"></output>
+            <input id="meaning-size" type="range" min="14" max="34" step="1">
+          </label>
+          <label class="range-row" for="word-weight">字体粗细<output id="word-weight-value" for="word-weight"></output>
+            <input id="word-weight" type="range" min="400" max="700" step="100">
+          </label>
+        </fieldset>
+      </section>
+      <section id="cloud-panel" hidden>
+        <div id="account" class="account" hidden>
+          <span class="brand-mark account-mark"><svg><use href="#icon-cloud"/></svg></span>
+          <div><strong id="account-email"></strong><small id="account-project"></small></div>
+          <button type="button" class="text-button" id="sign-out">退出</button>
+        </div>
+        <form id="cloud-form">
+          <label for="firebase-config">Firebase 网页配置</label>
+          <textarea id="firebase-config" rows="5" maxlength="12000" spellcheck="false" placeholder="粘贴 Firebase 控制台复制的 firebaseConfig" required></textarea>
+          <label for="email">Firebase 账号邮箱</label>
+          <input id="email" type="email" autocomplete="username" required>
+          <label for="password">密码</label>
+          <input id="password" type="password" autocomplete="current-password" required>
+          <button id="sign-in" class="primary" type="submit">登录并连接</button>
+        </form>
+        <p id="cloud-message" class="feedback" role="status" hidden></p>
+        <button id="merge-local" class="secondary" type="button" hidden>合并本机词条到云端</button>
+        <details class="help">
+          <summary>Firebase 配置步骤</summary>
+          <ol>
+            <li>在你自己的 Firebase 项目里添加网页应用，复制项目设置中的 <code>firebaseConfig</code>。</li>
+            <li>在 Authentication 启用电子邮件和密码登录，并在用户页添加自己的账号。</li>
+            <li>启用默认 Cloud Firestore，发布 <a href="./firestore.rules" download>单词本安全规则</a>。已配置 Mizu 桌面版的同名规则可以继续用。</li>
+          </ol>
+          <p>使用桌面版同一项目和账号时，两端共用云端备份。网页修改会写到云端，桌面版需要手动恢复才能读取。</p>
+        </details>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog id="editor" class="modal" aria-labelledby="editor-title">
+    <form id="word-form">
+      <div class="modal-heading">
+        <h2 id="editor-title">添加单词</h2>
+        <button type="button" class="icon-button" data-close="editor" aria-label="关闭">
+          <svg><use href="#icon-close"/></svg>
+        </button>
+      </div>
+      <label for="word">英文</label>
+      <input id="word" lang="en" maxlength="80" autocomplete="off" spellcheck="false" required>
+      <label for="meaning">中文释义</label>
+      <textarea id="meaning" rows="3" maxlength="200"></textarea>
+      <p id="editor-error" class="feedback" role="alert" hidden></p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button type="button" class="secondary" data-close="editor">取消</button>
+        <button type="submit" class="primary" id="save-word">保存</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="remove" class="modal" aria-labelledby="remove-title">
+    <form id="remove-form">
+      <h2 id="remove-title">删除词条</h2>
+      <p id="remove-prompt"></p>
+      <p id="remove-error" class="feedback" role="alert" hidden></p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button type="button" class="secondary" data-close="remove" autofocus>取消</button>
+        <button type="submit" class="danger" id="remove-word">删除</button>
+      </div>
+    </form>
+  </dialog>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>
