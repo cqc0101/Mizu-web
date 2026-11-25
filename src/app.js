@@ -7,14 +7,6 @@ const localKey = "mizu-web:words";
 const configKey = "mizu-web:firebase";
 const themes = { light: "雾白", dark: "墨绿", navy: "深蓝", pink: "浅粉", lavender: "浅紫" };
 const themeColors = { light: "#eaf0e9", dark: "#1b2520", navy: "#142033", pink: "#f4e7ed", lavender: "#ebe6f6" };
-const samples = [
-  { Word: "serene", Meaning: "宁静的，安详的" },
-  { Word: "deliberate", Meaning: "深思熟虑的，有意的" },
-  { Word: "nuance", Meaning: "细微差别，微妙之处" },
-  { Word: "lucid", Meaning: "清晰易懂的，清醒的" },
-  { Word: "solace", Meaning: "安慰，慰藉" },
-  { Word: "fleeting", Meaning: "转瞬即逝的" }
-];
 
 function getSaved(key) {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -51,8 +43,7 @@ const display = {
   hideMeaning: savedDisplay.hideMeaning === true,
   englishSize: bounded(savedDisplay.englishSize, 16, 38, 24),
   meaningSize: bounded(savedDisplay.meaningSize, 14, 34, 17),
-  weight: bounded(savedDisplay.weight, 400, 700, 500),
-  hideExamples: savedDisplay.hideExamples === true
+  weight: bounded(savedDisplay.weight, 400, 700, 500)
 };
 
 const settings = byId("settings");
@@ -65,7 +56,6 @@ const rows = byId("rows");
 const configInput = byId("firebase-config");
 const emailInput = byId("email");
 const passwordInput = byId("password");
-const sampleToggle = byId("sample-toggle");
 let localWords = loadLocalWords();
 let connection;
 let selectedConfig;
@@ -178,7 +168,7 @@ const currentWords = () => cloud?.words ?? localWords;
 const library = () => cloud ? cloud.project + "/" + cloud.uid : "local";
 const canWrite = () => !connecting && !working && (cloud ? cloud.ready : !localLoadError);
 
-function wordRow(entry, example) {
+function wordRow(entry) {
   const row = document.createElement("li");
   row.className = "word-row word-grid";
   const english = document.createElement("span");
@@ -190,27 +180,25 @@ function wordRow(entry, example) {
   meaning.textContent = entry.Meaning || "—";
   const actions = document.createElement("span");
   actions.className = "row-actions";
-  if (!example) {
-    for (const [id, name, glyph, open] of [
-      ["edit", "编辑词条", "pencil", openEditor], ["delete", "删除词条", "trash", openRemove]
-    ]) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "icon-button";
-      button.dataset.action = id;
-      button.title = name;
-      button.setAttribute("aria-label", name + " " + entry.Word);
-      button.disabled = !canWrite();
-      button.append(icon(glyph));
-      button.addEventListener("click", () => open(entry));
-      actions.append(button);
-    }
-    row.addEventListener("contextmenu", (event) => {
-      if (!canWrite() || event.target.closest("button")) return;
-      event.preventDefault();
-      openEditor(entry);
-    });
+  for (const [id, name, glyph, open] of [
+    ["edit", "编辑词条", "pencil", openEditor], ["delete", "删除词条", "trash", openRemove]
+  ]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "icon-button";
+    button.dataset.action = id;
+    button.title = name;
+    button.setAttribute("aria-label", name + " " + entry.Word);
+    button.disabled = !canWrite();
+    button.append(icon(glyph));
+    button.addEventListener("click", () => open(entry));
+    actions.append(button);
   }
+  row.addEventListener("contextmenu", (event) => {
+    if (!canWrite() || event.target.closest("button")) return;
+    event.preventDefault();
+    openEditor(entry);
+  });
   row.append(english, meaning, actions);
   return row;
 }
@@ -219,26 +207,24 @@ function render() {
   const terms = search.value.trim().toLowerCase();
   const words = currentWords();
   const allHidden = display.hideEnglish && display.hideMeaning;
-  const sampleAvailable = !allHidden && !cloud && !connecting && !localLoadError && getSaved(localKey) === null && !terms;
-  const example = sampleAvailable && !display.hideExamples;
-  sampleToggle.hidden = !sampleAvailable;
-  sampleToggle.textContent = example ? "收起示例" : "查看示例";
-  const visible = allHidden ? [] : (example ? samples : words).filter(
+  const visible = allHidden ? [] : words.filter(
     (entry) => !terms || entry.Word.toLowerCase().includes(terms) || entry.Meaning.toLowerCase().includes(terms)
   );
-  byId("word-count").textContent = cloud && !cloud.ready && words.length === 0 ? "云端单词本" : words.length + " 个词条";
-  byId("list-context").textContent = example ? "示例词条" : terms && visible.length ? visible.length + " 条结果" : "";
+  byId("list-context").textContent = visible.length + (terms ? " 条结果" : " 个词条");
   byId("list-header").hidden = visible.length === 0;
-  rows.replaceChildren(...visible.map((entry) => wordRow(entry, example)));
+  rows.replaceChildren(...visible.map(wordRow));
   byId("empty").hidden = visible.length > 0;
   byId("empty-text").textContent = allHidden ? "英文和中文均已隐藏，可在设置中恢复显示。"
     : cloud && !cloud.ready ? (cloud.error ? "云端词条暂不可用" : "正在读取云端词条…")
-      : terms ? "未找到匹配的词条" : "单词本为空，可以添加第一条。";
+      : terms ? "未找到匹配的词条" : "暂无词条";
   add.disabled = !canWrite() || words.length >= wordLimit;
-  add.title = words.length >= wordLimit ? "已达到 500 条上限" : "";
+  add.title = words.length >= wordLimit ? "已达到 500 条上限" : "添加单词";
   const syncLabel = cloud?.error ? "连接异常" : cloud?.ready ? "已同步" : cloud || connecting ? "正在连接" : "仅本机";
   byId("cloud-text").textContent = syncLabel;
-  byId("cloud-button").dataset.online = String(cloud?.ready === true);
+  const cloudButton = byId("cloud-button");
+  cloudButton.dataset.online = String(cloud?.ready === true);
+  cloudButton.setAttribute("aria-label", "Firebase 同步设置 · " + syncLabel);
+  cloudButton.title = syncLabel;
   feedback("sync-problem", cloud?.error ? describeError(cloud.error) : cloud ? "" : localLoadError);
   byId("account").hidden = !cloud;
   byId("account-email").textContent = cloud?.email ?? "";
@@ -264,11 +250,6 @@ byId("settings-button").addEventListener("click", () => openSettings("display"))
 byId("cloud-button").addEventListener("click", () => openSettings("cloud"));
 byId("display-tab").addEventListener("click", () => openSettings("display"));
 byId("cloud-tab").addEventListener("click", () => openSettings("cloud"));
-sampleToggle.addEventListener("click", () => {
-  display.hideExamples = !display.hideExamples;
-  saveDisplay();
-  render();
-});
 search.addEventListener("input", render);
 
 function openEditor(entry = null) {
@@ -291,8 +272,12 @@ function openRemove(entry) {
   remove.showModal();
 }
 
+let noticeTimer;
 function notify(message) {
-  byId("notice").textContent = message;
+  const notice = byId("notice");
+  clearTimeout(noticeTimer);
+  notice.textContent = message;
+  noticeTimer = setTimeout(() => { notice.textContent = ""; }, 2400);
 }
 
 async function storeChange(change, target) {
