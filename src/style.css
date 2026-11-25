@@ -104,13 +104,14 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 h2, p { margin: 0; }
 .notebook { flex: 1; background: var(--card); background: color-mix(in srgb, var(--card) 97%, transparent); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 32px var(--shadow); }
 .poem-strip {
-  display: flex; align-items: baseline; justify-self: stretch; gap: 11px; min-width: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px;
+  justify-self: start; width: fit-content; max-width: 100%; min-width: 0;
   border: 0; border-radius: 9px; padding: 7px 8px; text-align: left; background: transparent;
 }
 .poem-strip:hover { background: var(--subtle); }
-.poem-line, .poem-credit { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.poem-line { flex: 0 1 auto; font-family: KaiTi, "Kaiti SC", "Songti SC", SimSun, serif; font-size: 18px; }
-.poem-credit { flex: 0 2 auto; font-size: 13px; color: var(--quiet); }
+.poem-line, .poem-credit { overflow-wrap: anywhere; }
+.poem-line { font-family: KaiTi, "Kaiti SC", "Songti SC", SimSun, serif; font-size: 18px; line-height: 1.45; }
+.poem-credit { text-align: right; font-size: 13px; color: var(--quiet); }
 .search-panel {
   position: absolute; top: calc(100% + 3px); right: 0; z-index: 5; width: min(360px, 100%);
   display: flex; align-items: center; gap: 4px; padding: 5px; border: 1px solid var(--line);
@@ -342,9 +343,9 @@ textarea { resize: vertical; min-height: 70px; }
 @media (max-width: 620px) {
   .topbar { gap: 7px; padding-block: 7px; }
   .wordbook-topbar .top-controls { gap: 4px; }
-  .wordbook-topbar .poem-strip { display: grid; gap: 2px; padding-block: 3px; }
+  .wordbook-topbar .poem-strip { padding-block: 3px; }
   .poem-line { font-size: 16px; }
-  .poem-credit { justify-self: end; font-size: 12px; }
+  .poem-credit { font-size: 12px; }
   .icon-button.practice-button { width: 40px; padding: 0; }
   .practice-button span { display: none; }
   .notebook { border-radius: 12px; }
