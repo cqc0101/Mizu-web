@@ -1,5 +1,6 @@
 import "./style.css";
 import { changeWords, parseFirebaseConfig, readWords, wordLimit } from "./words.js";
+import { setupPractice } from "./practice-ui.js";
 
 const byId = (id) => document.getElementById(id);
 const prefKey = "mizu-web:display";
@@ -218,6 +219,7 @@ function render() {
     : cloud && !cloud.ready ? (cloud.error ? "云端词条暂不可用" : "正在读取云端词条…")
       : terms ? "未找到匹配的词条" : "暂无词条";
   add.disabled = !canWrite() || words.length >= wordLimit;
+  byId("practice-button").disabled = connecting || !!(cloud && !cloud.ready && words.length === 0);
   add.title = words.length >= wordLimit ? "已达到 500 条上限" : "添加单词";
   const syncLabel = cloud?.error ? "连接异常" : cloud?.ready ? "已同步" : cloud || connecting ? "正在连接" : "仅本机";
   byId("cloud-text").textContent = syncLabel;
@@ -418,6 +420,7 @@ window.addEventListener("storage", (event) => {
 });
 
 applyDisplay();
+setupPractice(currentWords);
 render();
 const savedConfig = getSaved(configKey);
 if (savedConfig) {
