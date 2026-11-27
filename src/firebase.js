@@ -6,17 +6,17 @@ import { changeBooks, decodeBooks, encodeBooks } from "./books.js";
 
 function readSnapshot(document) {
   if (!document.exists()) return newSnapshot();
-  return decodeSnapshot(readPayload(document));
+  return decodeSnapshot(readPayload(document).toUint8Array());
 }
 
 function readCustomBooks(document) {
-  return document.exists() ? decodeBooks(readPayload(document)) : [];
+  return document.exists() ? decodeBooks(readPayload(document).toUint8Array()) : [];
 }
 
 function readPayload(document) {
   const { schemaVersion, payload } = document.data();
   if (schemaVersion !== 1 || !(payload instanceof Bytes)) throw new Error("云端备份格式不受支持，暂时无法修改。");
-  return payload.toUint8Array();
+  return payload;
 }
 
 const loginPersistence = (keep) => keep ? browserLocalPersistence : browserSessionPersistence;
@@ -37,10 +37,23 @@ export function createFirebaseConnection(config, onState, keepLogin = false) {
   };
   const accountDocument = (collection, user) => doc(firestore, collection, user.uid);
   function watch(reference, read, update) {
-    const failed = (error) => update([], false, error);
+    let payload, value;
+    const failed = (error) => update(undefined, false, error);
     return onSnapshot(reference, { includeMetadataChanges: true }, (document) => {
-      try { update(read(document), !document.metadata.fromCache, null); }
-      catch (error) { failed(error); }
+      if (document.metadata.hasPendingWrites) return;
+      if (document.metadata.fromCache) {
+        // The app owns the disk copy. The SDK's cold memory snapshot can be empty.
+        if (payload !== undefined) update(value, false, null);
+        return;
+      }
+      try {
+        const next = document.exists() ? readPayload(document) : null;
+        if (next === null ? payload !== null : !payload || !next.isEqual(payload)) {
+          value = next ? read(next.toUint8Array()) : [];
+          payload = next;
+        }
+        update(value, true, null);
+      } catch (error) { failed(error); }
     }, failed);
   }
   const stopAuth = onAuthStateChanged(auth, (user) => {
@@ -51,8 +64,8 @@ export function createFirebaseConnection(config, onState, keepLogin = false) {
       return;
     }
     let state = {
-      uid: user.uid, email: user.email, project: config.projectId, ready: false, words: [],
-      booksReady: false, books: []
+      uid: user.uid, email: user.email, project: config.projectId, ready: false,
+      booksReady: false
     };
     const update = (patch) => {
       if (!active || auth.currentUser?.uid !== user.uid) return;
@@ -61,9 +74,9 @@ export function createFirebaseConnection(config, onState, keepLogin = false) {
     };
     update({});
     subscriptions = [
-      watch(accountDocument("mizuSync", user), (snapshot) => readSnapshot(snapshot).Words,
+      watch(accountDocument("mizuSync", user), (bytes) => decodeSnapshot(bytes).Words,
         (words, ready, error) => update({ words, ready, error })),
-      watch(accountDocument("mizuWebBooks", user), readCustomBooks,
+      watch(accountDocument("mizuWebBooks", user), decodeBooks,
         (books, booksReady, booksError) => update({ books, booksReady, booksError }))
     ];
   });

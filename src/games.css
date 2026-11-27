@@ -1,5 +1,7 @@
+.game-view { display: flex; flex: 1; flex-direction: column; }
 .game-topbar { grid-template-columns: auto 1fr; max-width: 760px; }
 .game-back { justify-self: end; color: var(--text); min-height: 36px; font-size: 14px; }
+#games-button, .game-back { touch-action: manipulation; }
 .games { max-width: 760px; gap: 11px; }
 .game-tabs {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;

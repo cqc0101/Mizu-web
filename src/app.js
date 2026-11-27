@@ -5,6 +5,9 @@ import { changeBooks, encodeBooks, personalBook, readBooks } from "./books.js";
 import { examBooks, getExamWords, loadExamWords } from "./wordpacks.js";
 import { setupBookMenu } from "./book-menu.js";
 import { setupPoetry } from "./poetry.js";
+import { setupGamesRoute } from "./games-route.js";
+import { cachedAccount, cacheCloudWords, clearCloudWords, cloudAccountKey, forgetCachedAccount,
+  loadCloudCache, rememberCloudAccount, sameCloudAccount } from "./cloud-cache.js";
 
 const byId = (id) => document.getElementById(id);
 const prefKey = "mizu-web:display";
@@ -14,6 +17,7 @@ const keepLoginKey = "mizu-web:firebase-keep-login";
 const localBooksKey = "mizu-web:custom-books";
 const bookDisplayKey = "mizu-web:book-display";
 const pageSize = 50;
+const noEntries = [];
 const themes = { light: "雾白", dark: "墨绿", navy: "深蓝", pink: "浅粉", lavender: "浅紫" };
 const themeColors = { light: "#eaf0e9", dark: "#1b2520", navy: "#142033", pink: "#f4e7ed", lavender: "#ebe6f6" };
 
@@ -74,6 +78,7 @@ const add = byId("add-word");
 const search = byId("search");
 const list = byId("word-list");
 const rows = byId("rows");
+const gamesView = byId("games-view");
 const configInput = byId("firebase-config");
 const configFile = byId("firebase-config-file");
 const configImport = byId("import-firebase-config");
@@ -116,6 +121,8 @@ let connecting = false;
 let working = false;
 let editing;
 let deleting;
+let cloudFrame;
+let renderOnReturn = false;
 
 function icon(name) {
   const namespace = "http://www.w3.org/2000/svg";
@@ -225,8 +232,8 @@ function describeError(error) {
   }
 }
 
-const personalWords = () => cloud?.words ?? localWords;
-const customBooks = () => cloud?.books ?? localBooks;
+const personalWords = () => cloud ? cloud.words ?? noEntries : localWords;
+const customBooks = () => cloud ? cloud.books ?? noEntries : localBooks;
 const books = () => [personalBook, ...examBooks, ...customBooks().map(({ id, name }) => ({ id, name, kind: "custom" }))];
 const visibleBooks = () => books().filter(({ id }) => !hiddenBooks.has(id));
 const activeBook = () => {
@@ -287,10 +294,10 @@ function renderBookControls(active) {
   feedback("books-sync-message", cloud?.booksError?.code === "permission-denied"
     ? "让自建词本参与云端同步，请发布新版 Firestore 安全规则，再重新登录。"
     : cloud?.booksError ? describeError(cloud.booksError)
-      : cloud && !cloud.booksReady ? "正在读取云端自建词本…" : cloud ? "" : localBooksError);
+      : cloud && !cloud.books ? "正在读取云端自建词本…" : cloud ? "" : localBooksError);
 }
 
-function wordRow(entry, book) {
+function wordRow(entry, book, write) {
   const row = document.createElement("li");
   row.className = "word-row word-grid";
   const english = document.createElement("span");
@@ -313,7 +320,7 @@ function wordRow(entry, book) {
     button.dataset.action = id;
     button.title = name;
     button.setAttribute("aria-label", name + " " + entry.Word);
-    button.disabled = !canWrite(book);
+    button.disabled = !write;
     button.append(icon(glyph));
     button.addEventListener("click", () => open(entry));
     actions.append(button);
@@ -328,16 +335,21 @@ function wordRow(entry, book) {
 }
 
 function render() {
+  if (!gamesView.hidden) {
+    renderOnReturn = true;
+    return;
+  }
+  renderOnReturn = false;
   const terms = search.value.trim().toLowerCase();
   byId("search-button").dataset.filtered = String(!!terms);
   const book = activeBook();
   loadSelectedExam(book);
   renderBookControls(book);
-  const words = bookWords(book) ?? [];
+  const words = bookWords(book) ?? noEntries;
   const exam = book?.kind === "exam";
   const packRequest = exam ? examRequests.get(book.id) : null;
   const waiting = book && (exam ? !getExamWords(book.id) : cloud &&
-    !(book.kind === "personal" ? cloud.ready : cloud.booksReady));
+    !(book.kind === "personal" ? cloud.words : cloud.books));
   list.classList.toggle("read-only", !!exam);
   const allHidden = display.hideEnglish && display.hideMeaning;
   const matches = allHidden ? [] : terms ? words.filter((entry) =>
@@ -350,13 +362,16 @@ function render() {
   const start = infinite ? 0 : pageIndex * pageSize;
   const end = infinite ? Math.min(matches.length, loadedPages * pageSize) : Math.min(matches.length, start + pageSize);
   const write = canWrite(book);
-  const key = [book?.id, terms, infinite, allHidden, write, start].join("|");
+  const key = [book?.id, terms, infinite, allHidden, start].join("|");
   if (drawnRows?.key === key && drawnRows.words === words && drawnRows.end <= end) {
-    rows.append(...matches.slice(drawnRows.end, end).map((entry) => wordRow(entry, book)));
+    if (drawnRows.write !== write) {
+      for (const button of rows.querySelectorAll("[data-action]")) button.disabled = !write;
+    }
+    if (drawnRows.end !== end) rows.append(...matches.slice(drawnRows.end, end).map((entry) => wordRow(entry, book, write)));
   } else {
-    rows.replaceChildren(...matches.slice(start, end).map((entry) => wordRow(entry, book)));
+    rows.replaceChildren(...matches.slice(start, end).map((entry) => wordRow(entry, book, write)));
   }
-  drawnRows = { key, words, end };
+  drawnRows = { key, words, end, write };
   sentinel.hidden = !infinite || end >= matches.length;
   const visibleCount = end - start;
   byId("list-context").textContent = !book || waiting || allHidden ? "" : pages > 1
@@ -375,7 +390,8 @@ function render() {
   add.disabled = !canWrite(book) || words.length >= wordLimit;
   add.title = exam ? "在个人或自建词本中添加单词"
     : words.length >= wordLimit ? `已达到 ${wordLimit} 条上限` : "添加单词";
-  const syncLabel = cloud?.error ? "连接异常" : cloud?.ready ? "已同步" : cloud || connecting ? "正在连接" : "仅本机";
+  const syncLabel = cloud?.error ? "连接异常" : cloud?.ready ? "已同步"
+    : cloud?.words || cloud?.books ? "本地缓存" : cloud || connecting ? "正在连接" : "仅本机";
   byId("cloud-text").textContent = syncLabel;
   const cloudButton = byId("cloud-button");
   cloudButton.dataset.online = String(cloud?.ready === true);
@@ -387,14 +403,15 @@ function render() {
   byId("account-project").textContent = cloud?.project ?? "";
   byId("cloud-config-editor").hidden = !!cloud;
   configImport.hidden = !!cloud;
-  configImport.disabled = configExport.disabled = keepLogin.disabled = connecting;
+  configImport.disabled = configExport.disabled = connecting;
+  keepLogin.disabled = connecting || cloud?.restoring === true;
   if (cloud) cloudForm.remove();
   else if (cloudForm.parentNode !== cloudLogin) cloudLogin.append(cloudForm);
   signIn.disabled = connecting;
-  byId("sign-out").disabled = connecting || working;
-  const remoteWords = personalWords();
-  byId("merge-local").hidden = !cloud?.ready || !localWords.some((entry) =>
-    !remoteWords.some((remote) => remote.Word.trim().toLowerCase() === entry.Word.trim().toLowerCase()));
+  byId("sign-out").disabled = !connection || connecting || working;
+  const wordKey = (entry) => entry.Word.trim().toLowerCase();
+  const remoteKeys = cloud?.ready && localWords.length ? new Set(personalWords().map(wordKey)) : null;
+  byId("merge-local").hidden = !remoteKeys || !localWords.some((entry) => !remoteKeys.has(wordKey(entry)));
   byId("merge-local").disabled = !canWrite(personalBook);
   byId("merge-local-books").hidden = !cloud?.booksReady || localBooks.length === 0;
   byId("merge-local-books").disabled = !canWriteCustom();
@@ -662,8 +679,34 @@ settings.addEventListener("click", (event) => {
   if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) settings.close();
 });
 
-async function startConnection(config) {
+function queueCloudRender() {
+  if (cloudFrame !== undefined) return;
+  cloudFrame = requestAnimationFrame(() => {
+    cloudFrame = undefined;
+    render();
+  });
+}
+
+const accessDenied = (error) => ["permission-denied", "unauthenticated"].includes(error?.code);
+
+function restoreCachedWords(account, allowed) {
+  void loadCloudCache(account).then(({ words, books }) => {
+    if (!allowed() || (words === undefined && books === undefined)) return;
+    if (!cloud) cloud = { ...account, restoring: true };
+    if (!sameCloudAccount(account, cloud)) return;
+    if (cloud.words === undefined && !accessDenied(cloud.error)) cloud.words = words;
+    if (cloud.books === undefined && !accessDenied(cloud.booksError)) cloud.books = books;
+    queueCloudRender();
+  });
+}
+
+async function startConnection(config, restore = false) {
   if (connection && JSON.stringify(selectedConfig) === JSON.stringify(config)) return;
+  const saved = restore ? cachedAccount(config.projectId, savedKeepLogin) : null;
+  let authKnown = false;
+  let previousState;
+  if (saved) restoreCachedWords(saved, () => authKnown ? sameCloudAccount(saved, previousState)
+    : sameCloudAccount(saved, cachedAccount(config.projectId, savedKeepLogin)));
   const { createFirebaseConnection } = await import("./firebase.js");
   if (connection) {
     await connection.signOut();
@@ -672,9 +715,33 @@ async function startConnection(config) {
   }
   selectedConfig = config;
   connection = createFirebaseConnection(config, (state) => {
-    cloud = state;
+    authKnown = true;
+    if (state) {
+      const previous = sameCloudAccount(cloud, state) ? cloud : null;
+      cloud = {
+        ...state,
+        words: accessDenied(state.error) ? undefined : state.words ?? previous?.words,
+        books: accessDenied(state.booksError) ? undefined : state.books ?? previous?.books
+      };
+      if (!sameCloudAccount(state, previousState)) {
+        if (previousState) forgetCachedAccount(previousState);
+        rememberCloudAccount(state, keepLogin.checked);
+        if (!sameCloudAccount(state, saved)) {
+          restoreCachedWords(state, () => sameCloudAccount(cloud, state));
+        }
+      }
+      if (state.ready && state.words !== previousState?.words) void cacheCloudWords(state, "words", state.words);
+      if (state.booksReady && state.books !== previousState?.books) void cacheCloudWords(state, "books", state.books);
+      if (accessDenied(state.error) && state.error !== previousState?.error) void clearCloudWords(state, "words");
+      if (accessDenied(state.booksError) && state.booksError !== previousState?.booksError) void clearCloudWords(state, "books");
+    } else {
+      const account = previousState ?? saved;
+      if (account) forgetCachedAccount(account);
+      cloud = null;
+    }
+    previousState = state;
     feedback("cloud-message", state?.error ? describeError(state.error) : "");
-    render();
+    queueCloudRender();
   }, savedKeepLogin);
   await connection.ready;
 }
@@ -726,6 +793,7 @@ keepLogin.addEventListener("change", async () => {
   try {
     await connection.setKeepLogin(keep);
     if (!rememberLoginPreference(keep)) throw new Error("浏览器无法保存保持登录的偏好。");
+    if (cloud) rememberCloudAccount(cloud, keep);
     feedback("cloud-message");
     notify(keep ? "已设置在此设备保持登录" : "登录将只保留在当前标签页");
   } catch (error) {
@@ -752,6 +820,7 @@ cloudForm.addEventListener("submit", async (event) => {
     passwordInput.value = "";
     const configSaved = remember(configKey, config);
     const preferenceSaved = rememberLoginPreference(keep);
+    if (cloud) rememberCloudAccount(cloud, keep);
     if (!configSaved || !preferenceSaved)
       feedback("cloud-message", "已登录，但浏览器无法保留配置或登录偏好。");
   } catch (error) {
@@ -766,7 +835,12 @@ byId("sign-out").addEventListener("click", async () => {
   connecting = true;
   render();
   try {
+    const account = cloud;
     await connection.signOut();
+    if (account) {
+      forgetCachedAccount(account);
+      await Promise.all([clearCloudWords(account, "words"), clearCloudWords(account, "books")]);
+    }
     notify("已退出 Firebase，当前显示本机单词本。");
   } catch (error) {
     feedback("cloud-message", describeError(error));
@@ -809,6 +883,11 @@ byId("merge-local-books").addEventListener("click", async () => {
 });
 
 window.addEventListener("storage", (event) => {
+  if (cloud?.restoring && (event.key === cloudAccountKey || event.key === null) &&
+      !sameCloudAccount(cloud, cachedAccount(cloud.project, savedKeepLogin))) {
+    cloud = null;
+    render();
+  }
   if (event.key === localKey || event.key === null) {
     localWords = loadLocalWords();
     render();
@@ -825,14 +904,15 @@ refreshPractice = setupPractice({
   getBooks: books, activeId: () => activeBook()?.id, library,
   loadWords(book) {
     if (book.kind === "exam") return loadExamWords(book);
-    const ready = book.kind === "personal" ? cloud?.ready : cloud?.booksReady;
+    const available = book.kind === "personal" ? cloud?.words : cloud?.books;
     const error = book.kind === "personal" ? cloud?.error : cloud?.booksError;
     const words = bookWords(book);
-    if (!words.length && (connecting || (cloud && !ready)))
+    if (!words.length && !available && (connecting || cloud))
       throw new Error(error ? describeError(error) : "正在读取云端词本，请稍后重试。");
     return words;
   }
 });
+setupGamesRoute(() => { if (renderOnReturn) render(); });
 render();
 const savedConfig = getSaved(configKey);
 if (savedConfig) {
@@ -841,7 +921,7 @@ if (savedConfig) {
     configInput.value = JSON.stringify(config, null, 2);
     connecting = true;
     render();
-    startConnection(config).catch((error) => feedback("cloud-message", describeError(error))).finally(() => {
+    startConnection(config, true).catch((error) => feedback("cloud-message", describeError(error))).finally(() => {
       connecting = false;
       render();
     });

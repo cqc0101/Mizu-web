@@ -10,6 +10,8 @@
 
 数字华容道的「最优提示」会高亮最短解的下一步。首次使用时，浏览器按需加载 Web Worker 和约 1.5 MiB 的模式数据库。提示开启后，沿提示走会继续使用已算出的路线，改走其他步会重新求解，长时间计算可取消。
 
+从单词本进入游戏以及返回时，网页会保留当前词本、搜索和分页。同步过的个人单词本和自建词本按 Firebase 项目和账号写入浏览器 IndexedDB，刷新时先显示上次的结果，再在后台确认更新。离线时可以阅读已缓存词条，编辑需连接云端。退出 Firebase 会清除该账号在当前浏览器的词条缓存。
+
 模式数据库随源码提供。调整分组后，运行 `node scripts/generate-sliding-patterns.mjs` 重新生成，再运行 `npm test` 验证。
 
 右上角的「练习」进入独立练习页，可勾选一本、多本或全部词本，自定题数或开启无限练习。练习支持翻卡自测和四选一，四选一至少需要四种不同的释义。答错或标记「没记住」的词会进入错词本，可单独自测或移除。练习设置和错词本保存在当前浏览器。
@@ -66,7 +68,7 @@ npm run build
 2. 直接拖入生成的 `Mizu-Web-Cloudflare-Pages.zip`，再点击部署。ZIP 根目录就是可发布静态文件。
 3. 打开分配的 `pages.dev` 地址，通过右上角云朵登录自己的 Firebase。如果网页 API Key 设置了网站限制，请允许该页面的实际域名。
 
-可以用 `npm run build` 和 `python scripts/package-cloudflare.py` 重新生成上传 ZIP。Cloudflare Pages 按协商压缩静态资源，包内 `_headers` 对哈希命名的脚本、样式和词包设置长缓存，并让浏览器重新验证 HTML。首次打开个人词本不会下载公共词包，选中哪本就载入哪本。游戏页面在打开时单独加载。
+可以用 `npm run build` 和 `python scripts/package-cloudflare.py` 重新生成上传 ZIP。Cloudflare Pages 按协商压缩静态资源，包内 `_headers` 对哈希命名的脚本、样式和词包设置长缓存，并让浏览器重新验证 HTML。首次打开个人词本不会下载公共词包，选中哪本就载入哪本。游戏界面随首页提供，最优提示资源首次使用时按需下载。
 
 [Cloudflare Pages 直接上传](https://developers.cloudflare.com/pages/get-started/direct-upload/) · [静态资源压缩与缓存](https://developers.cloudflare.com/pages/configuration/serving-pages/) · [响应头文档](https://developers.cloudflare.com/pages/configuration/headers/)
 

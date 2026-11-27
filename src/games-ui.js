@@ -1,17 +1,6 @@
-import "./style.css";
 import "./games.css";
+import gameMarkup from "./games-view.html?raw";
 import { newSlidingBoard, newSudoku, shuffled, slideSolved, slideTile } from "./games.js";
-
-const byId = (id) => document.getElementById(id);
-const title = byId("game-title"), note = byId("game-note"), stage = byId("game-stage");
-const status = byId("game-status"), actions = byId("game-actions");
-const tabs = [...document.querySelectorAll("[data-game]")];
-let lifecycle;
-
-try {
-  const theme = JSON.parse(localStorage.getItem("mizu-web:display"))?.theme;
-  if (["light", "dark", "navy", "pink", "lavender"].includes(theme)) document.documentElement.dataset.theme = theme;
-} catch {}
 
 function button(text, onClick, className = "secondary") {
   const element = document.createElement("button");
@@ -22,7 +11,7 @@ function button(text, onClick, className = "secondary") {
   return element;
 }
 
-function grid(className, label) {
+function grid(stage, className, label) {
   const board = document.createElement("div");
   board.className = "game-grid " + className;
   board.setAttribute("role", "group");
@@ -31,9 +20,9 @@ function grid(className, label) {
   return board;
 }
 
-function mountSliding(signal) {
+function mountSliding({ note, stage, status, actions, signal }) {
   note.textContent = "把空格相邻的数字移进去，将 1 到 15 从左上到右下排好。";
-  const puzzle = grid("sliding-grid", "数字华容道棋盘");
+  const puzzle = grid(stage, "sliding-grid", "数字华容道棋盘");
   let board, moves, solved;
   let worker, calculating = false, hintEnabled = false, hintFailed = false;
   let route = [], retryTimer;
@@ -155,9 +144,9 @@ function mountSliding(signal) {
   restart();
 }
 
-function mountSchulte(signal) {
+function mountSchulte({ note, stage, status, actions, signal }) {
   note.textContent = "按从 1 到 25 的顺序点击。点错不会前进。";
-  const puzzle = grid("schulte-grid", "舒尔特方块棋盘");
+  const puzzle = grid(stage, "schulte-grid", "舒尔特方块棋盘");
   puzzle.hidden = true;
   let timer, started = 0, expected = 1, mistakes = 0;
   function tick() {
@@ -195,9 +184,9 @@ function mountSchulte(signal) {
   signal.addEventListener("abort", () => clearInterval(timer), { once: true });
 }
 
-function mountSudoku() {
+function mountSudoku({ note, stage, status, actions }) {
   note.textContent = "在空格填入 1 到 9，每行、每列和每个九宫格中的数字不能重复。";
-  const puzzle = grid("sudoku-grid", "数独棋盘");
+  const puzzle = grid(stage, "sudoku-grid", "数独棋盘");
   let current, values, inputs, complete;
   function renderConflicts() {
     const conflicts = new Set();
@@ -265,7 +254,7 @@ function mountSudoku() {
   restart();
 }
 
-function mountReaction(signal) {
+function mountReaction({ note, stage, status, signal }) {
   note.textContent = "点击测试区开始，等它变绿后尽快点击。";
   let phase = "idle", timer, frame, greenAt;
   function stop() { clearTimeout(timer); cancelAnimationFrame(frame); greenAt = undefined; }
@@ -312,20 +301,49 @@ function mountReaction(signal) {
 }
 
 const mounts = { slide: mountSliding, schulte: mountSchulte, sudoku: mountSudoku, reaction: mountReaction };
-function choose(id) {
-  if (!Object.hasOwn(mounts, id)) id = "slide";
-  lifecycle?.abort();
-  lifecycle = new AbortController();
-  for (const tab of tabs) tab.setAttribute("aria-pressed", String(tab.dataset.game === id));
-  title.textContent = tabs.find((tab) => tab.dataset.game === id).textContent;
-  status.textContent = note.textContent = "";
-  stage.replaceChildren();
-  actions.replaceChildren();
-  history.replaceState(null, "", "#" + id);
-  mounts[id](lifecycle.signal);
+
+export function createGamesView(container, onSelect = () => {}, onBack) {
+  container.innerHTML = gameMarkup;
+  const find = (id) => container.querySelector("#game-" + id);
+  const title = find("title"), note = find("note"), stage = find("stage");
+  const status = find("status"), actions = find("actions");
+  const tabs = [...container.querySelectorAll("[data-game]")];
+  let lifecycle;
+  let selected;
+  function show(id) {
+    const game = Object.hasOwn(mounts, id) ? id : "slide";
+    if (lifecycle && selected === game) return;
+    lifecycle?.abort();
+    lifecycle = new AbortController();
+    selected = game;
+    for (const tab of tabs) tab.setAttribute("aria-pressed", String(tab.dataset.game === game));
+    title.textContent = tabs.find((tab) => tab.dataset.game === game).textContent;
+    status.textContent = note.textContent = "";
+    stage.replaceChildren();
+    actions.replaceChildren();
+    mounts[game]({ note, stage, status, actions, signal: lifecycle.signal });
+  }
+  for (const tab of tabs) tab.addEventListener("click", () => {
+    show(tab.dataset.game);
+    onSelect(tab.dataset.game);
+  });
+  if (onBack) for (const link of container.querySelectorAll(".game-topbar a")) {
+    link.addEventListener("click", (event) => {
+      if (!isPlainClick(event)) return;
+      event.preventDefault();
+      onBack();
+    });
+  }
+  return {
+    show,
+    hide() {
+      lifecycle?.abort();
+      lifecycle = undefined;
+    },
+    focus: () => title.focus({ preventScroll: true })
+  };
 }
 
-for (const tab of tabs) tab.addEventListener("click", () => choose(tab.dataset.game));
-window.addEventListener("pagehide", () => lifecycle?.abort());
-window.addEventListener("pageshow", (event) => { if (event.persisted) choose(location.hash.slice(1)); });
-choose(location.hash.slice(1));
+export function isPlainClick(event) {
+  return event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+}
