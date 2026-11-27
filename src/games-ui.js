@@ -31,37 +31,127 @@ function grid(className, label) {
   return board;
 }
 
-function mountSliding() {
+function mountSliding(signal) {
   note.textContent = "把空格相邻的数字移进去，将 1 到 15 从左上到右下排好。";
   const puzzle = grid("sliding-grid", "数字华容道棋盘");
   let board, moves, solved;
+  let worker, calculating = false, hintEnabled = false, hintFailed = false;
+  let route = [], retryTimer;
+  const hintButton = button("最优提示", () => {
+    if (hintEnabled) stopHint();
+    else {
+      hintEnabled = true;
+      hintFailed = false;
+      requestHint();
+    }
+    draw();
+  });
+
   const tiles = Array.from({ length: 16 }, (_, i) => button("", () => {
     if (solved) return;
     const next = slideTile(board, i);
     if (next === board) return;
+    const followingHint = board[i] === route[0];
     board = next;
     moves++;
     solved = slideSolved(board);
+    hintFailed = false;
+    if (solved) stopHint();
+    else if (hintEnabled) {
+      if (followingHint) route.shift();
+      else {
+        route = [];
+        stopCalculation();
+        // Wait briefly for a series of moves to settle before starting a new search.
+        calculating = true;
+        retryTimer = setTimeout(() => {
+          retryTimer = undefined;
+          requestHint();
+          draw();
+        }, 120);
+      }
+    }
     draw();
   }, "game-tile"));
   puzzle.append(...tiles);
+
+  function stopCalculation() {
+    if (retryTimer !== undefined) {
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+    } else if (calculating) {
+      worker?.terminate();
+      worker = undefined;
+    }
+    calculating = false;
+  }
+
+  function stopHint() {
+    stopCalculation();
+    hintEnabled = false;
+    hintFailed = false;
+    route = [];
+  }
+
+  function requestHint() {
+    calculating = true;
+    try {
+      worker ??= new Worker(new URL("./sliding-hint-worker.js", import.meta.url), { type: "module" });
+      const current = worker;
+      current.onmessage = ({ data }) => {
+        if (current !== worker || !calculating) return;
+        if (!data?.length) {
+          failHint();
+          return;
+        }
+        calculating = false;
+        route = data;
+        draw();
+      };
+      current.onerror = () => {
+        if (current === worker) failHint();
+      };
+      current.postMessage(board);
+    } catch {
+      failHint();
+    }
+  }
+
+  function failHint() {
+    stopHint();
+    hintFailed = true;
+    draw();
+  }
+
   function draw() {
     tiles.forEach((tile, i) => {
       const value = board[i];
       tile.textContent = value ? String(value) : "";
-      tile.setAttribute("aria-label", value ? "数字 " + value : "空格");
+      const hinted = value === route[0];
+      tile.setAttribute("aria-label", value ? (hinted ? "建议移动数字 " : "数字 ") + value : "空格");
       tile.dataset.blank = String(!value);
+      tile.toggleAttribute("data-hint", hinted);
       tile.disabled = !value || solved;
     });
-    status.textContent = solved ? "完成 · " + moves + " 步" : moves + " 步";
+    const progress = solved ? "完成 · " + moves + " 步" : moves + " 步";
+    const message = calculating ? " · 正在计算最短路线…" : hintFailed ? " · 提示加载失败，请重试" : "";
+    if (status.textContent !== progress + message) status.textContent = progress + message;
+    hintButton.textContent = calculating ? "取消计算" : hintEnabled ? "关闭提示" : "最优提示";
+    hintButton.disabled = solved;
   }
+
   function restart() {
+    stopHint();
     board = newSlidingBoard();
     moves = 0;
     solved = false;
     draw();
   }
-  actions.append(button("新棋盘", restart));
+  actions.append(hintButton, button("新棋盘", restart));
+  signal.addEventListener("abort", () => {
+    stopHint();
+    worker?.terminate();
+  }, { once: true });
   restart();
 }
 
